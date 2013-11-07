@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectDescription>
+	<name>beakDevGPU-Source@BeakGPU</name>
+	<comment></comment>
+	<projects>
+	</projects>
+	<buildSpec>
+	</buildSpec>
+	<natures>
+	</natures>
+	<linkedResources>
+		<link>
+			<name>[Subprojects]</name>
+			<type>2</type>
+			<locationURI>virtual:/virtual</locationURI>
+		</link>
+		<link>
+			<name>[Subprojects]/gtest_builder</name>
+			<type>2</type>
+			<location>/home/wsun2/cuda-workspace/BeakGPU/ext/gtest</location>
+		</link>
+	</linkedResources>
+</projectDescription>

@@ -1,0 +1,2 @@
+MESSAGE("I am src GPU folder")
+MESSAGE(${GPU_SOURCE_DIR})

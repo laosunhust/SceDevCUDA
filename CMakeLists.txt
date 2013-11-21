@@ -34,7 +34,7 @@ SET(CMAKE_MODELTEST_DIR ${CMAKE_SOURCE_DIR}/modelTest)
 find_path(STDIO_INCLUDE_PATH stdio.h)
 SET(STL_INCLUDE_PATH "${STDIO_INCLUDE_PATH}/c++/4.6")
 SET(CMAKE_ECLIPSE_GENERATE_SOURCE_PROJECT TRUE)
-include_directories(${STL_INCLUDE_PATH} ${STDIO_INCLUDE_PATH})
+#include_directories(${STL_INCLUDE_PATH} ${STDIO_INCLUDE_PATH})
 
 SET(CMAKE_BUILD_TYPE DEBUG)
 #MESSAGE("${CMAKE_INCLUDE_PATH}")
@@ -50,6 +50,12 @@ if(CUDA_FOUND)
 endif (CUDA_FOUND)
 
 set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}; -gencode arch=compute_20,code=sm_20)
+CUDA_INCLUDE_DIRECTORIES(
+	${CMAKE_SOURCE_DIR}
+	${CUDA_INSTALL_PREFIX}/include
+	)
+SET(CUDA_LIBRARIES "${CUDA_LIBRARIES};${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcusparse.so")
+
 
 add_subdirectory(${EXT_PROJECTS_DIR}/gtest)
 ADD_SUBDIRECTORY(${CMAKE_SOURCE_DIR}/srcCPU)
@@ -62,21 +68,3 @@ ADD_SUBDIRECTORY(${CMAKE_SOURCE_DIR}/modelTest)
 
 ENABLE_TESTING()
 
-#set(PROJECT_TEST_NAME ./build/${PROJECT_NAME_STR}_test)
-#include_directories(${GTEST_INCLUDE_DIRS} ${COMMON_INCLUDES})
-
-#file(GLOB TEST_SRC_FILES ${PROJECT_SOURCE_DIR}/unitTest/*.cpp)
-#add_executable(${PROJECT_TEST_NAME} ${TEST_SRC_FILES})
-#add_dependencies(${PROJECT_TEST_NAME} googletest)
-#add_dependencies(${PROJECT_TEST_NAME} SceCPU)
-
-#if(NOT WIN32)
-#        target_link_libraries(${PROJECT_TEST_NAME} pthread)
-#        target_link_libraries(${PROJECT_TEST_NAME} ${CPU_SOURCE_DIR}/libSceCPU.a)
-#        target_link_libraries(${PROJECT_TEST_NAME}
-#                ${GTEST_LIBS_DIR}/libgtest.a
-#                ${GTEST_LIBS_DIR}/libgtest_main.a
-#        )
-#endif()
-
-#add_test(test1 ${PROJECT_TEST_NAME})

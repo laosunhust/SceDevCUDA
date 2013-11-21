@@ -64,7 +64,7 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell) {
 
 	//cellRanks.resize(maxTotalNodeCount);
 	//nodeRanks.resize(maxTotalNodeCount);
-	uint maxTotalNodeCount = maxTotalCellNodeCount + maxTotalECMNodeCount;\
+	uint maxTotalNodeCount = maxTotalCellNodeCount + maxTotalECMNodeCount;
 	nodeIsActive.resize(maxTotalNodeCount);
 	nodeLocX.resize(maxTotalNodeCount);
 	nodeLocY.resize(maxTotalNodeCount);
@@ -145,20 +145,162 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell) {
 	//std::cout << "k2 From Device:" << constantsCopiesFromDevice[3] << std::endl;
 }
 
+SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell,
+		uint maxTotalECMCount, uint maxNodeInECM) {
+	maxCellCount = maxTotalCellCount;
+	maxNodeOfOneCell = maxNodeInCell;
+	maxNodePerECM = maxNodeInECM;
+	maxECMCount = maxTotalECMCount;
+	currentActiveCellCount = 0;
+	// for now it is initialized as 3.
+	maxNodePerECM = 3;
+	// for now it is initialized as 0.
+	maxECMCount = 0;
+	maxTotalECMNodeCount = maxECMCount * maxNodePerECM;
+	currentActiveECM = 0;
+
+	// will need to change this value after we have more detail about ECM
+	maxTotalCellNodeCount = maxTotalCellCount * maxNodeOfOneCell;
+
+	//cellRanks.resize(maxTotalNodeCount);
+	//nodeRanks.resize(maxTotalNodeCount);
+	uint maxTotalNodeCount = maxTotalCellNodeCount + maxTotalECMNodeCount;
+	nodeIsActive.resize(maxTotalNodeCount);
+	nodeLocX.resize(maxTotalNodeCount);
+	nodeLocY.resize(maxTotalNodeCount);
+	nodeLocZ.resize(maxTotalNodeCount);
+	nodeVelX.resize(maxTotalNodeCount);
+	nodeVelY.resize(maxTotalNodeCount);
+	nodeVelZ.resize(maxTotalNodeCount);
+	//thrust::counting_iterator<uint> countingBegin(0);
+	//thrust::counting_iterator<uint> countingEnd(maxTotalNodeCount);
+
+	// following block of code is depreciated due to a simplification of node global notation
+	//thrust::transform(
+	//		make_zip_iterator(
+	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
+	//						countingBegin)),
+	//		make_zip_iterator(
+	//				make_tuple(cellRanks.end(), nodeRanks.end(), countingEnd)),
+	//		make_zip_iterator(
+	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
+	//						countingBegin)), InitFunctor(maxCellCount));
+
+	ConfigParser parser;
+	std::string configFileName = "sceCell.config";
+	// globalConfigVars should be a global variable and defined in the main function.
+	globalConfigVars = parser.parseConfigFile(configFileName);
+	static const double U0 =
+			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
+					/ globalConfigVars.getConfigValue("InterCell_U0_DivFactor").toDouble();
+	static const double V0 =
+			globalConfigVars.getConfigValue("InterCell_V0_Original").toDouble()
+					/ globalConfigVars.getConfigValue("InterCell_V0_DivFactor").toDouble();
+	static const double k1 =
+			globalConfigVars.getConfigValue("InterCell_k1_Original").toDouble()
+					/ globalConfigVars.getConfigValue("InterCell_k1_DivFactor").toDouble();
+	static const double k2 =
+			globalConfigVars.getConfigValue("InterCell_k2_Original").toDouble()
+					/ globalConfigVars.getConfigValue("InterCell_k2_DivFactor").toDouble();
+	static const double interLinkEffectiveRange =
+			globalConfigVars.getConfigValue("InterCellLinkBreakRange").toDouble();
+
+	sceInterParaCPU[0] = U0;
+	sceInterParaCPU[1] = V0;
+	sceInterParaCPU[2] = k1;
+	sceInterParaCPU[3] = k2;
+	sceInterParaCPU[4] = interLinkEffectiveRange;
+
+	static const double U0_Intra =
+			globalConfigVars.getConfigValue("IntraCell_U0_Original").toDouble()
+					/ globalConfigVars.getConfigValue("IntraCell_U0_DivFactor").toDouble();
+	static const double V0_Intra =
+			globalConfigVars.getConfigValue("IntraCell_V0_Original").toDouble()
+					/ globalConfigVars.getConfigValue("IntraCell_V0_DivFactor").toDouble();
+	static const double k1_Intra =
+			globalConfigVars.getConfigValue("IntraCell_k1_Original").toDouble()
+					/ globalConfigVars.getConfigValue("IntraCell_k1_DivFactor").toDouble();
+	static const double k2_Intra =
+			globalConfigVars.getConfigValue("IntraCell_k2_Original").toDouble()
+					/ globalConfigVars.getConfigValue("IntraCell_k2_DivFactor").toDouble();
+	sceIntraParaCPU[0] = U0_Intra;
+	sceIntraParaCPU[1] = V0_Intra;
+	sceIntraParaCPU[2] = k1_Intra;
+	sceIntraParaCPU[3] = k2_Intra;
+
+	cudaMemcpyToSymbol(sceInterPara, sceInterParaCPU, 5 * sizeof(double));
+	cudaMemcpyToSymbol(sceIntraPara, sceIntraParaCPU, 4 * sizeof(double));
+}
+
+void SceNodes::addNewlyDividedCells(
+		thrust::device_vector<double> &nodeLocXNewCell,
+		thrust::device_vector<double> &nodeLocYNewCell,
+		thrust::device_vector<double> &nodeLocZNewCell,
+		thrust::device_vector<bool> &nodeIsActiveNewCell) {
+
+	uint shiftSize = nodeLocXNewCell.size();
+	assert(shiftSize % maxNodeOfOneCell == 0);
+	uint addCellCount = shiftSize / maxNodeOfOneCell;
+
+	uint shiftStartPos = currentActiveCellCount * maxNodeOfOneCell;
+	uint shiftEndPos = shiftStartPos + currentActiveECM * maxNodePerECM;
+	uint ECMStartPos = shiftStartPos + shiftSize;
+	// reason using this tmp vector is that GPU copying does not guarantee copying sequence.
+	// will cause undefined behavior if copy directly.
+	//std::cout << "shift start position = " << shiftStartPos << ", end pos = "
+	//		<< shiftEndPos << std::endl;
+	thrust::device_vector<double> tmpPosXECM(nodeLocX.begin() + shiftStartPos,
+			nodeLocX.begin() + shiftEndPos);
+	thrust::device_vector<double> tmpPosYECM(nodeLocY.begin() + shiftStartPos,
+			nodeLocY.begin() + shiftEndPos);
+	thrust::device_vector<double> tmpPosZECM(nodeLocZ.begin() + shiftStartPos,
+			nodeLocZ.begin() + shiftEndPos);
+	thrust::device_vector<bool> tmpIsActive(
+			nodeIsActive.begin() + shiftStartPos,
+			nodeIsActive.begin() + shiftEndPos);
+
+	thrust::copy(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodeLocXNewCell.begin(),
+							nodeLocYNewCell.begin(), nodeLocZNewCell.begin(),
+							nodeIsActiveNewCell.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodeLocXNewCell.end(),
+							nodeLocYNewCell.end(), nodeLocZNewCell.end(),
+							nodeIsActiveNewCell.end())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodeLocX.begin(), nodeLocY.begin(),
+							nodeLocZ.begin(), nodeIsActive.begin()))
+					+ shiftStartPos);
+
+	thrust::copy(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpPosXECM.begin(), tmpPosYECM.begin(),
+							tmpPosZECM.begin(), tmpIsActive.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpPosXECM.end(), tmpPosYECM.end(),
+							tmpPosZECM.end(), tmpIsActive.end())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodeLocX.begin(), nodeLocY.begin(),
+							nodeLocZ.begin(), nodeIsActive.begin()))
+					+ ECMStartPos);
+	currentActiveCellCount = currentActiveCellCount + addCellCount;
+}
+
 void SceNodes::buildBuckets2D(double minX, double maxX, double minY,
 		double maxY, double bucketSize) {
 	int totalActiveNodes = currentActiveCellCount * maxNodeOfOneCell;
-	//std::cout << "total number of active nodes:" << totalActiveNodes
-	//		<< std::endl;
+//std::cout << "total number of active nodes:" << totalActiveNodes
+//		<< std::endl;
 	bucketKeys.resize(totalActiveNodes);
 	bucketValues.resize(totalActiveNodes);
 	thrust::counting_iterator<uint> countingIterBegin(0);
 	thrust::counting_iterator<uint> countingIterEnd(totalActiveNodes);
 
-	// takes counting iterator and coordinates
-	// return tuple of keys and values
+// takes counting iterator and coordinates
+// return tuple of keys and values
 
-	// transform the points to their bucket indices
+// transform the points to their bucket indices
 	thrust::transform(
 			make_zip_iterator(
 					make_tuple(nodeLocX.begin(), nodeLocY.begin(),
@@ -172,11 +314,11 @@ void SceNodes::buildBuckets2D(double minX, double maxX, double minY,
 					make_tuple(bucketKeys.begin(), bucketValues.begin())),
 			pointToBucketIndex2D(minX, maxX, minY, maxY, bucketSize));
 
-	// sort the points by their bucket index
+// sort the points by their bucket index
 	thrust::sort_by_key(bucketKeys.begin(), bucketKeys.end(),
 			bucketValues.begin());
-	// for those nodes that are inactive, we key value of UINT_MAX will be returned.
-	// we need to removed those keys along with their values.
+// for those nodes that are inactive, we key value of UINT_MAX will be returned.
+// we need to removed those keys along with their values.
 	int numberOfOutOfRange = thrust::count(bucketKeys.begin(), bucketKeys.end(),
 			UINT_MAX);
 	bucketKeys.erase(bucketKeys.end() - numberOfOutOfRange, bucketKeys.end());
@@ -230,18 +372,18 @@ void calculateAndAddIntraForce(double &xPos, double &yPos, double &zPos,
 	xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
 	yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
 	zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
-	//xRes = xRes + (xPos2 - xPos);
-	//yRes = yRes + (yPos2 - yPos);
-	//zRes = zRes + (zPos2 - zPos);
-	//xRes = xRes + 1.0;
-	//yRes = yRes + 2.0;
-	//zRes = zRes + 3.0;
-	//xRes = xRes + forceValue;
-	//yRes = yRes + forceValue;
-	//zRes = zRes + forceValue;
-	//xRes = xRes + xPos;
-	//yRes = yRes + yPos;
-	//zRes = zRes + zPos;
+//xRes = xRes + (xPos2 - xPos);
+//yRes = yRes + (yPos2 - yPos);
+//zRes = zRes + (zPos2 - zPos);
+//xRes = xRes + 1.0;
+//yRes = yRes + 2.0;
+//zRes = zRes + 3.0;
+//xRes = xRes + forceValue;
+//yRes = yRes + forceValue;
+//zRes = zRes + forceValue;
+//xRes = xRes + xPos;
+//yRes = yRes + yPos;
+//zRes = zRes + zPos;
 }
 
 __device__ bool bothNodesCellNode(uint nodeGlobalRank1, uint nodeGlobalRank2,
@@ -284,14 +426,14 @@ void SceNodes::extendBuckets2D(uint numOfBucketsInXDim,
 	thrust::counting_iterator<uint> countingEnd = countingBegin
 			+ valuesCount * extensionFactor2D;
 
-	//std::cout << "number of values for array holding extended value= "
-	//		<< valuesCount * extensionFactor2D << std::endl;
-	//thrust::for_each(
-	//		thrust::make_zip_iterator(
-	//				make_tuple(bucketKeysExpanded.begin(), countingBegin)),
-	//		thrust::make_zip_iterator(
-	//				make_tuple(bucketKeysExpanded.end(), countingEnd)),
-	//		NeighborFunctor2D(numOfBucketsInXDim, numOfBucketsInYDim));
+//std::cout << "number of values for array holding extended value= "
+//		<< valuesCount * extensionFactor2D << std::endl;
+//thrust::for_each(
+//		thrust::make_zip_iterator(
+//				make_tuple(bucketKeysExpanded.begin(), countingBegin)),
+//		thrust::make_zip_iterator(
+//				make_tuple(bucketKeysExpanded.end(), countingEnd)),
+//		NeighborFunctor2D(numOfBucketsInXDim, numOfBucketsInYDim));
 
 	thrust::transform(
 			make_zip_iterator(
@@ -304,7 +446,7 @@ void SceNodes::extendBuckets2D(uint numOfBucketsInXDim,
 
 	int numberOfOutOfRange = thrust::count(bucketKeysExpanded.begin(),
 			bucketKeysExpanded.end(), UINT_MAX);
-	//std::cout << "number out of range = " << numberOfOutOfRange << std::endl;
+//std::cout << "number out of range = " << numberOfOutOfRange << std::endl;
 	int sizeBeforeShrink = bucketKeysExpanded.size();
 	int numberInsideRange = sizeBeforeShrink - numberOfOutOfRange;
 	thrust::sort_by_key(bucketKeysExpanded.begin(), bucketKeysExpanded.end(),
@@ -331,14 +473,14 @@ void SceNodes::applySceForces(uint numOfBucketsInXDim,
 	thrust::host_vector<uint> keyBeginFromGPU = keyBegin;
 	thrust::host_vector<uint> keyEndFromGPU = keyEnd;
 	thrust::host_vector<uint> bucketKeysFromGPU = bucketKeys;
-	//for (uint i = 0; i < keyBeginFromGPU.size(); i++) {
-	//	std::cout << "key begin: " << keyBeginFromGPU[i] << "key end:"
-	//			<< keyEndFromGPU[i] << std::endl;
-	//}
+//for (uint i = 0; i < keyBeginFromGPU.size(); i++) {
+//	std::cout << "key begin: " << keyBeginFromGPU[i] << "key end:"
+//			<< keyEndFromGPU[i] << std::endl;
+//}
 
-	//for (uint i = 0; i < bucketKeysFromGPU.size(); i++) {
-	//	std::cout << "bucket key: " << bucketKeysFromGPU[i] << std::endl;
-	//}
+//for (uint i = 0; i < bucketKeysFromGPU.size(); i++) {
+//	std::cout << "bucket key: " << bucketKeysFromGPU[i] << std::endl;
+//}
 
 	double* nodeLocXAddress = thrust::raw_pointer_cast(&nodeLocX[0]);
 	double* nodeLocYAddress = thrust::raw_pointer_cast(&nodeLocY[0]);

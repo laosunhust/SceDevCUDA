@@ -5,4 +5,6 @@ CUDA_ADD_LIBRARY(SceGPU
 	${CPU_SOURCE_DIR}/ConfigParser.cpp
 	SceNodes.h
 	SceNodes.cu
+	SceCells.h
+	SceCells.cu
 )

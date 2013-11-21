@@ -10,8 +10,6 @@ const int myDeviceId = 2;
 const uint maxCellCount = 10;
 const uint maxNodePerCell = 100;
 const uint maxNodeCount = maxCellCount * maxNodePerCell;
-const uint maxInterLink = 3;
-const uint maxIntraLink = 5;
 const double dt = 0.1;
 const double errTol = 1.0e-12;
 
@@ -706,7 +704,7 @@ TEST_F(SceNodeTest, addForceFixedNeighborTest) {
 TEST_F(SceNodeTest, addForceRandomTest) {
 	cudaSetDevice(myDeviceId);
 	SceNodes nodes(maxCellCount, maxNodePerCell);
-	int currentActiveCellCount = maxCellCount-3;
+	int currentActiveCellCount = maxCellCount - 4;
 	nodes.setCurrentActiveCellCount(currentActiveCellCount);
 	thrust::host_vector<double> nodeLocXHost(maxNodeCount);
 	thrust::host_vector<double> nodeLocYHost(maxNodeCount);
@@ -766,7 +764,6 @@ TEST_F(SceNodeTest, addForceRandomTest) {
 	for (uint i = 0; i < 5; i++) {
 		paraSetInter[i] = sceInterParaCPU[i];
 	}
-
 	computeResultFromCPUAllIntraAndInter2D(xPoss, yPoss, zPoss, xVels, yVels,
 			zVels, isActive, paraSetIntra, paraSetInter, bucketSize,
 			currentActiveCellCount, maxNodePerCell, minX, maxX, minY, maxY);
@@ -778,5 +775,83 @@ TEST_F(SceNodeTest, addForceRandomTest) {
 		EXPECT_NEAR(yVels[i], nodeVelYFromGPU[i], errTol);
 		EXPECT_NEAR(zVels[i], nodeVelZFromGPU[i], errTol);
 	}
+}
+
+TEST(AddNewCellTest, addCellFixedTest) {
+	const uint maxCellCount = 4;
+	const uint initCellCount = 2;
+	const uint maxNodePerCell = 2;
+	const uint maxECMCount = 2;
+	const uint maxNodeInECM = 1;
+	const uint addNodeSize = 4;
+	const uint maxTotalNodeCount = maxCellCount * maxNodePerCell
+			+ maxECMCount * maxNodeInECM;
+	SceNodes nodes(maxCellCount, maxNodePerCell, maxECMCount, maxNodeInECM);
+	nodes.setCurrentActiveCellCount(initCellCount);
+	nodes.setCurrentActiveEcm(maxNodeInECM);
+
+	double nodeXInput[] = { 1.2, 3, 2, 1.5, 0.3, 1.1, 9.9, 0.0, 0.0, 0.0 };
+	double nodeYInput[] = { 2.3, 1, 2, 5.6, 0.9, 8.6, 2.3, 0.0, 0.0, 0.0 };
+	double nodeZInput[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	bool nodeIsActInput[] = { true, true, true, false, true, true, true, true,
+			true, false };
+
+	thrust::host_vector<double> nodeLocXHost(nodeXInput,
+			nodeXInput + maxTotalNodeCount);
+	thrust::host_vector<double> nodeLocYHost(nodeYInput,
+			nodeYInput + maxTotalNodeCount);
+	thrust::host_vector<double> nodeLocZHost(nodeZInput,
+			nodeZInput + maxTotalNodeCount);
+	thrust::host_vector<bool> nodeIsActiveHost(nodeIsActInput,
+			nodeIsActInput + maxTotalNodeCount);
+	nodes.nodeLocX = nodeLocXHost;
+	nodes.nodeLocY = nodeLocYHost;
+	nodes.nodeLocZ = nodeLocZHost;
+	nodes.nodeIsActive = nodeIsActiveHost;
+
+	double nodeXInputToAdd[] = { 8.2, 7.4, 9.5, 6.7 };
+	double nodeYInputToAdd[] = { 3.2, 5.6, 8.8, 7.7 };
+	double nodeZInputToAdd[] = { 0, 0, 0, 0 };
+	bool nodeIsActInputToAdd[] = { true, false, true, false };
+
+	thrust::host_vector<double> locXToBeAddedHost(nodeXInputToAdd,
+			nodeXInputToAdd + addNodeSize);
+	thrust::host_vector<double> locYToBeAddedHost(nodeYInputToAdd,
+			nodeYInputToAdd + addNodeSize);
+	thrust::host_vector<double> locZToBeAddedHost(nodeZInputToAdd,
+			nodeZInputToAdd + addNodeSize);
+	thrust::host_vector<bool> locIsActiveToBeAddedHost(nodeIsActInputToAdd,
+			nodeIsActInputToAdd + addNodeSize);
+
+	thrust::device_vector<double> locXToBeAdded = locXToBeAddedHost;
+	thrust::device_vector<double> locYToBeAdded = locYToBeAddedHost;
+	thrust::device_vector<double> locZToBeAdded = locZToBeAddedHost;
+	thrust::device_vector<bool> locIsActiveToBeAdded = locIsActiveToBeAddedHost;
+
+	double nodeXExpecteRes[] = { 1.2, 3, 2, 1.5, 8.2, 7.4, 9.5, 6.7, 0.3, 1.1 };
+	double nodeYExpecteRes[] = { 2.3, 1, 2, 5.6, 3.2, 5.6, 8.8, 7.7, 0.9, 8.6 };
+	double nodeZExpecteRes[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	bool nodeIsActExpecteRes[] = { true, true, true, false, true, false, true,
+			false, true, true };
+
+	nodes.addNewlyDividedCells(locXToBeAdded, locYToBeAdded, locZToBeAdded,
+			locIsActiveToBeAdded);
+	thrust::host_vector<double> locXAfterExpandFromGPU = nodes.nodeLocX;
+	thrust::host_vector<double> locYAfterExpandFromGPU = nodes.nodeLocY;
+	thrust::host_vector<double> locZAfterExpandFromGPU = nodes.nodeLocZ;
+	thrust::host_vector<double> isActiveAfterExpandFromGPU = nodes.nodeIsActive;
+	EXPECT_EQ(locXAfterExpandFromGPU.size(), maxTotalNodeCount);
+	EXPECT_EQ(locYAfterExpandFromGPU.size(), maxTotalNodeCount);
+	EXPECT_EQ(locZAfterExpandFromGPU.size(), maxTotalNodeCount);
+	EXPECT_EQ(isActiveAfterExpandFromGPU.size(), maxTotalNodeCount);
+	for (uint i = 0; i < maxTotalNodeCount; i++) {
+		EXPECT_EQ(locXAfterExpandFromGPU[i], nodeXExpecteRes[i]);
+		EXPECT_EQ(locYAfterExpandFromGPU[i], nodeYExpecteRes[i]);
+		EXPECT_EQ(locZAfterExpandFromGPU[i], nodeZExpecteRes[i]);
+		EXPECT_EQ(isActiveAfterExpandFromGPU[i], nodeIsActExpecteRes[i]);
+	}
+}
+
+TEST(AddNewCellTest,addCellRandomTest) {
 
 }

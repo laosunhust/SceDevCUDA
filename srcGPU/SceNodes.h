@@ -39,6 +39,7 @@
  *
  */
 typedef unsigned int uint;
+typedef thrust::tuple<double, double> CVec2;
 typedef thrust::tuple<double, double, double> CVec3;
 typedef thrust::tuple<double, double, double, uint> CVec3Int;
 typedef thrust::tuple<double, double, double, bool, uint> CVec3BoolInt;
@@ -56,7 +57,7 @@ struct InitFunctor: public thrust::unary_function<Tuint3, Tuint3> {
 	__host__ __device__ InitFunctor(uint maxCell) :
 			maxCellCount(maxCell) {
 	}
-	__host__                              __device__ Tuint3 operator()(const Tuint3 &v) {
+	__host__ __device__ Tuint3 operator()(const Tuint3 &v) {
 		uint iter = thrust::get < 2 > (v);
 		uint cellRank = iter / maxCellCount;
 		uint nodeRank = iter % maxCellCount;
@@ -70,7 +71,7 @@ struct AddFunctor: public thrust::binary_function<CVec3, CVec3, CVec3> {
 			_dt(dt) {
 	}
 
-	__host__                              __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
+	__host__ __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
 		double xMoveDist = thrust::get < 0 > (vel) * _dt;
 		double yMoveDist = thrust::get < 1 > (vel) * _dt;
 		double zMoveDist = thrust::get < 2 > (vel) * _dt;

@@ -40,6 +40,7 @@
  */
 typedef unsigned int uint;
 typedef thrust::tuple<double, double> CVec2;
+typedef thrust::tuple<bool, double> BoolD;
 typedef thrust::tuple<double, double, double> CVec3;
 typedef thrust::tuple<double, double, double, uint> CVec3Int;
 typedef thrust::tuple<double, double, double, bool, uint> CVec3BoolInt;
@@ -71,7 +72,7 @@ struct AddFunctor: public thrust::binary_function<CVec3, CVec3, CVec3> {
 			_dt(dt) {
 	}
 
-	__host__ __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
+	__host__  __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
 		double xMoveDist = thrust::get < 0 > (vel) * _dt;
 		double yMoveDist = thrust::get < 1 > (vel) * _dt;
 		double zMoveDist = thrust::get < 2 > (vel) * _dt;
@@ -112,7 +113,7 @@ struct pointToBucketIndex2D: public thrust::unary_function<CVec3BoolInt, Tuint2>
 					bucketSize), width((maxX - minX) / bucketSize + 1) {
 	}
 
-	__host__     __device__ Tuint2 operator()(const CVec3BoolInt& v) const {
+	__host__ __device__ Tuint2 operator()(const CVec3BoolInt& v) const {
 		// find the raster indices of p's bucket
 		if (thrust::get < 3 > (v) == true) {
 			unsigned int x = static_cast<unsigned int>((thrust::get < 0
@@ -137,7 +138,7 @@ struct NeighborFunctor2D: public thrust::unary_function<Tuint2, Tuint2> {
 			_numOfBucketsInXDim(numOfBucketsInXDim), _numOfBucketsInYDim(
 					numOfBucketsInYDim) {
 	}
-	__host__                              __device__ Tuint2 operator()(const Tuint2 &v) {
+	__host__ __device__ Tuint2 operator()(const Tuint2 &v) {
 		uint relativeRank = thrust::get < 1 > (v) % 9;
 		uint xPos = thrust::get < 0 > (v) % _numOfBucketsInXDim;
 		uint yPos = thrust::get < 0 > (v) / _numOfBucketsInXDim;

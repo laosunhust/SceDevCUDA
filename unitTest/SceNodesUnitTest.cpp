@@ -778,6 +778,7 @@ TEST_F(SceNodeTest, addForceRandomTest) {
 }
 
 TEST(AddNewCellTest, addCellFixedTest) {
+	cudaSetDevice(myDeviceId);
 	const uint maxCellCount = 4;
 	const uint initCellCount = 2;
 	const uint maxNodePerCell = 2;

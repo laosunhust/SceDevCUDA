@@ -12,6 +12,11 @@ SceCells::SceCells(SceNodes* nodesInput) {
 			"MinDistanceToOtherNode").toDouble();
 	cellInitLength =
 			globalConfigVars.getConfigValue("CellInitLength").toDouble();
+	cellFinalLength =
+			globalConfigVars.getConfigValue("CellFinalLength").toDouble();
+	elongationCoefficient = globalConfigVars.getConfigValue(
+			"ElongateCoefficient").toDouble();
+
 	maxNodeOfOneCell = nodesInput->getMaxNodeOfOneCell();
 	maxCellCount = nodesInput->getMaxCellCount();
 	maxTotalCellNodeCount = nodesInput->getMaxTotalCellNodeCount();
@@ -19,6 +24,9 @@ SceCells::SceCells(SceNodes* nodesInput) {
 	nodes = nodesInput;
 	growthProgress.resize(maxCellCount, 0.0);
 	expectedLength.resize(maxCellCount, cellInitLength);
+	lengthDifference.resize(maxCellCount, 0.0);
+	smallestDistance.resize(maxCellCount);
+	biggestDistance.resize(maxCellCount);
 	activeNodeCountOfThisCell.resize(maxCellCount);
 	lastCheckPoint.resize(maxCellCount, 0.0);
 	isDivided.resize(maxCellCount);
@@ -38,6 +46,7 @@ SceCells::SceCells(SceNodes* nodesInput) {
 	activeXPoss.resize(maxTotalCellNodeCount);
 	activeYPoss.resize(maxTotalCellNodeCount);
 	activeZPoss.resize(maxTotalCellNodeCount);
+	distToCenterAlongGrowDir.resize(maxTotalCellNodeCount);
 
 	growThreshold = 1.0 / (maxNodeOfOneCell - maxNodeOfOneCell / 2);
 }
@@ -76,15 +85,11 @@ void SceCells::computeCenterPos() {
 							nodes->nodeLocZ.begin())),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(
-							make_transform_iterator(countingEnd,
+							make_transform_iterator(countingBegin,
 									DivideFunctor(maxNodeOfOneCell)),
-							nodes->nodeLocX.begin()
-									+ totalNodeCountForActiveCells,
-							nodes->nodeLocY.begin()
-									+ totalNodeCountForActiveCells,
-							nodes->nodeLocZ.begin()
-									+ totalNodeCountForActiveCells)),
-			nodes->nodeIsActive.begin(),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeLocZ.begin()))
+					+ totalNodeCountForActiveCells, nodes->nodeIsActive.begin(),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(cellRanks.begin(), activeXPoss.begin(),
 							activeYPoss.begin(), activeZPoss.begin())),
@@ -180,12 +185,110 @@ void SceCells::grow2DSimplified(double dt,
 					nodeIsActiveAddress, nodeXPosAddress, nodeYPosAddress));
 	// fifth step: use growthProgress and growthXDir&growthYDir to compute
 	// expected length along the growth direction.
+	thrust::transform(growthProgress.begin(),
+			growthProgress.begin() + currentActiveCellCount,
+			expectedLength.begin(),
+			CompuTarLen(cellInitLength, cellFinalLength));
+	// sixth step:  reducing the smallest value and biggest value
+	// a cell's node to its center point
+	uint totalNodeCountForActiveCells = currentActiveCellCount
+			* maxNodeOfOneCell;
 
-	// sixth step: compute current length along the growth direction
-	// and its difference with expected length
-
-	// seventh step: use the difference that just computed and growthXDir&growthYDir
-	// to apply stretching force (velocity) on nodes of all cells
-	//thrust::transform();
+	// compute direction of each node to its corresponding cell center
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(
+							make_permutation_iterator(centerCoordX.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(centerCoordY.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthXDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthYDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeIsActive.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(
+							make_permutation_iterator(centerCoordX.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(centerCoordY.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthXDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthYDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeIsActive.begin()))
+					+ totalNodeCountForActiveCells,
+			distToCenterAlongGrowDir.begin(), CompuDist());
+	// because distance will be zero if the node is inactive, it will not be max nor min
+	thrust::reduce_by_key(
+			make_transform_iterator(countingBegin,
+					DivideFunctor(maxNodeOfOneCell)),
+			make_transform_iterator(countingBegin,
+					DivideFunctor(maxNodeOfOneCell))
+					+ totalNodeCountForActiveCells,
+			distToCenterAlongGrowDir.begin(), cellRanksTmpStorage.begin(),
+			smallestDistance.begin(), thrust::equal_to<uint>(),
+			thrust::minimum<double>());
+	thrust::reduce_by_key(
+			make_transform_iterator(countingBegin,
+					DivideFunctor(maxNodeOfOneCell)),
+			make_transform_iterator(countingBegin,
+					DivideFunctor(maxNodeOfOneCell))
+					+ totalNodeCountForActiveCells,
+			distToCenterAlongGrowDir.begin(), cellRanksTmpStorage.begin(),
+			biggestDistance.begin(), thrust::equal_to<uint>(),
+			thrust::maximum<double>());
+	// seventh step: compute the current length and then
+	// compute its difference with expected length
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(expectedLength.begin(),
+							smallestDistance.begin(), biggestDistance.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(expectedLength.begin(),
+							smallestDistance.begin(), biggestDistance.begin()))
+					+ currentActiveCellCount, lengthDifference.begin(),
+			CompuDiff());
+// eighth step: use the difference that just computed and growthXDir&growthYDir
+// to apply stretching force (velocity) on nodes of all cells
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(distToCenterAlongGrowDir.begin(),
+							make_permutation_iterator(lengthDifference.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthXDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthYDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))))),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(distToCenterAlongGrowDir.begin(),
+							make_permutation_iterator(lengthDifference.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthXDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthYDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell)))))
+					+ currentActiveCellCount,
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeVelX.begin(),
+							nodes->nodeVelY.begin())),
+			ApplyStretchForce(elongationCoefficient));
 }
 

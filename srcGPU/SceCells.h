@@ -9,7 +9,7 @@ struct DivideFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ DivideFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__                       __device__ uint operator()(const uint &num) {
+	__host__     __device__ uint operator()(const uint &num) {
 		return num / dividend;
 	}
 };
@@ -18,7 +18,7 @@ struct ModuloFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ ModuloFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__                       __device__ uint operator()(const uint &num) {
+	__host__      __device__ uint operator()(const uint &num) {
 		return num % dividend;
 	}
 };
@@ -35,7 +35,7 @@ struct isTrue {
 };
 
 struct CVec3Add: public thrust::binary_function<CVec3, CVec3, CVec3> {
-	__host__                       __device__ CVec3 operator()(const CVec3 &vec1, const CVec3 &vec2) {
+	__host__      __device__ CVec3 operator()(const CVec3 &vec1, const CVec3 &vec2) {
 		return thrust::make_tuple(
 				thrust::get < 0 > (vec1) + thrust::get < 0 > (vec2),
 				thrust::get < 1 > (vec1) + thrust::get < 1 > (vec2),
@@ -43,7 +43,7 @@ struct CVec3Add: public thrust::binary_function<CVec3, CVec3, CVec3> {
 	}
 };
 struct CVec3Divide: public thrust::binary_function<CVec3, double, CVec3> {
-	__host__                       __device__ CVec3 operator()(const CVec3 &vec1,
+	__host__      __device__ CVec3 operator()(const CVec3 &vec1,
 			const double &divisor) {
 		return thrust::make_tuple(thrust::get < 0 > (vec1) / divisor,
 				thrust::get < 1 > (vec1) / divisor,
@@ -65,7 +65,7 @@ struct LoadGridDataToNode: public thrust::unary_function<CVec2, CVec3> {
 					gridSpacing), _gridMagValue(gridMagValue), _gridDirXCompValue(
 					gridDirXCompValue), _gridDirYCompValue(gridDirYCompValue) {
 	}
-	__host__                    __device__ CVec3 operator()(const CVec2 &d2) const {
+	__host__      __device__ CVec3 operator()(const CVec2 &d2) const {
 		double xCoord = thrust::get < 0 > (d2);
 		double yCoord = thrust::get < 1 > (d2);
 		uint gridLoc = (uint) (xCoord / _gridSpacing)
@@ -92,7 +92,7 @@ struct PtCondiOp: public thrust::unary_function<CVec2, BoolD> {
 	__host__ __device__ PtCondiOp(double threshold) :
 			_threshold(threshold) {
 	}
-	__host__                    __device__ BoolD operator()(const CVec2 &d2) const {
+	__host__      __device__ BoolD operator()(const CVec2 &d2) const {
 		double progress = thrust::get < 0 > (d2);
 		double lastCheckPoint = thrust::get < 1 > (d2);
 		bool resBool = false;
@@ -122,7 +122,7 @@ struct AddPtOp: thrust::unary_function<BoolUIDDUI, BoolUI> {
 					nodeIsActiveAddress), _nodeXPosAddress(nodeXPosAddress), _nodeYPosAddress(
 					nodeYPosAddress) {
 	}
-	__host__ __device__ BoolUI operator()(const BoolUIDDUI &biddi) {
+	__host__      __device__ BoolUI operator()(const BoolUIDDUI &biddi) {
 		const double pI = acos(-1.0);
 		bool isScheduledToGrow = thrust::get < 0 > (biddi);
 		uint activeNodeCountOfThisCell = thrust::get < 1 > (biddi);
@@ -169,6 +169,49 @@ struct AddPtOp: thrust::unary_function<BoolUIDDUI, BoolUI> {
 	}
 };
 
+struct CompuTarLen: thrust::unary_function<double, double> {
+	double _cellInitLength, _cellFinalLength;
+	__host__ __device__ CompuTarLen(double initLen, double finalLen) :
+			_cellInitLength(initLen), _cellFinalLength(finalLen) {
+	}
+	__host__ __device__ double operator()(const double &progress) {
+		return _cellInitLength + progress * (_cellFinalLength - _cellInitLength);
+	}
+};
+
+//TODO: complete this function
+struct CompuDist: thrust::unary_function<CVec6Bool, double> {
+	__host__ __device__ double operator()(const CVec6Bool &vec6b) {
+		return 0.0;
+	}
+};
+
+struct CompuDiff: thrust::unary_function<CVec3, double> {
+	__host__ __device__ double operator()(const CVec3 &vec3) {
+		double expectedLen = thrust::get < 0 > (vec3);
+		// minimum distance of node to its corresponding center along growth direction
+		double minDistance = thrust::get < 1 > (vec3);
+		double maxDistance = thrust::get < 2 > (vec3);
+		return (expectedLen - (maxDistance - minDistance));
+	}
+};
+
+//TODO: complete this function
+struct ApplyStretchForce: thrust::unary_function<CVec4, CVec2> {
+	double _elongationCoefficient;
+	__host__ __device__ ApplyStretchForce(double elongationCoefficient) :
+		_elongationCoefficient(elongationCoefficient) {
+	}
+	__host__ __device__ CVec2 operator()(const CVec4 &vec4) {
+		double distToCenterAlongGrowDir = thrust::get < 0 > (vec4);
+		// minimum distance of node to its corresponding center along growth direction
+		double lengthDifference = thrust::get < 1 > (vec4);
+		double growthXDir = thrust::get < 2 > (vec4);
+		double growthYDir = thrust::get < 3 > (vec4);
+		return thrust::make_tuple(0.0,0.0);
+	}
+};
+
 class SceCells {
 public:
 	// @maxNodeOfOneCell represents maximum number of nodes per cell
@@ -183,6 +226,8 @@ public:
 	double addNodeDistance;
 	double minDistanceToOtherNode;
 	double cellInitLength;
+	double cellFinalLength;
+	double elongationCoefficient;
 
 	SceNodes* nodes;
 
@@ -193,6 +238,14 @@ public:
 	thrust::device_vector<double> growthProgress;
 	thrust::device_vector<double> expectedLength;
 	thrust::device_vector<double> currentLength;
+	thrust::device_vector<double> lengthDifference;
+	// array to hold temp value computed in growth phase.
+	// obtained by smallest value of vector product of (a cell node to the cell center)
+	// and (growth direction). This will be a negative value
+	thrust::device_vector<double> smallestDistance;
+	// biggest value of vector product of (a cell node to the cell center)
+	// and (growth direction). This will be a positive value
+	thrust::device_vector<double> biggestDistance;
 	thrust::device_vector<uint> activeNodeCountOfThisCell;
 	thrust::device_vector<double> lastCheckPoint;
 	thrust::device_vector<bool> isDivided;
@@ -219,6 +272,9 @@ public:
 	thrust::device_vector<double> activeXPoss;
 	thrust::device_vector<double> activeYPoss;
 	thrust::device_vector<double> activeZPoss;
+
+	// temp value for holding a node direction to its corresponding center
+	thrust::device_vector<double> distToCenterAlongGrowDir;
 
 	SceCells(SceNodes* nodesInput);
 

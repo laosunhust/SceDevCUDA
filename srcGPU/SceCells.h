@@ -9,7 +9,7 @@ struct DivideFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ DivideFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__              __device__ uint operator()(const uint &num) {
+	__host__                       __device__ uint operator()(const uint &num) {
 		return num / dividend;
 	}
 };
@@ -18,7 +18,7 @@ struct ModuloFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ ModuloFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__        __device__ uint operator()(const uint &num) {
+	__host__                       __device__ uint operator()(const uint &num) {
 		return num % dividend;
 	}
 };
@@ -35,7 +35,7 @@ struct isTrue {
 };
 
 struct CVec3Add: public thrust::binary_function<CVec3, CVec3, CVec3> {
-	__host__              __device__ CVec3 operator()(const CVec3 &vec1, const CVec3 &vec2) {
+	__host__                       __device__ CVec3 operator()(const CVec3 &vec1, const CVec3 &vec2) {
 		return thrust::make_tuple(
 				thrust::get < 0 > (vec1) + thrust::get < 0 > (vec2),
 				thrust::get < 1 > (vec1) + thrust::get < 1 > (vec2),
@@ -43,7 +43,7 @@ struct CVec3Add: public thrust::binary_function<CVec3, CVec3, CVec3> {
 	}
 };
 struct CVec3Divide: public thrust::binary_function<CVec3, double, CVec3> {
-	__host__              __device__ CVec3 operator()(const CVec3 &vec1,
+	__host__                       __device__ CVec3 operator()(const CVec3 &vec1,
 			const double &divisor) {
 		return thrust::make_tuple(thrust::get < 0 > (vec1) / divisor,
 				thrust::get < 1 > (vec1) / divisor,
@@ -65,7 +65,7 @@ struct LoadGridDataToNode: public thrust::unary_function<CVec2, CVec3> {
 					gridSpacing), _gridMagValue(gridMagValue), _gridDirXCompValue(
 					gridDirXCompValue), _gridDirYCompValue(gridDirYCompValue) {
 	}
-	__host__ __device__ CVec3 operator()(const CVec2 &d2) const {
+	__host__                    __device__ CVec3 operator()(const CVec2 &d2) const {
 		double xCoord = thrust::get < 0 > (d2);
 		double yCoord = thrust::get < 1 > (d2);
 		uint gridLoc = (uint) (xCoord / _gridSpacing)
@@ -92,7 +92,7 @@ struct PtCondiOp: public thrust::unary_function<CVec2, BoolD> {
 	__host__ __device__ PtCondiOp(double threshold) :
 			_threshold(threshold) {
 	}
-	__host__ __device__ BoolD operator()(const CVec2 &d2) const {
+	__host__                    __device__ BoolD operator()(const CVec2 &d2) const {
 		double progress = thrust::get < 0 > (d2);
 		double lastCheckPoint = thrust::get < 1 > (d2);
 		bool resBool = false;
@@ -102,6 +102,70 @@ struct PtCondiOp: public thrust::unary_function<CVec2, BoolD> {
 			resLastCheckPoint = resLastCheckPoint + _threshold;
 		}
 		return thrust::make_tuple(resBool, resLastCheckPoint);
+	}
+};
+
+struct AddPtOp: thrust::unary_function<BoolUIDDUI, BoolUI> {
+	uint _maxNodeOfOneCell;
+	double _addNodeDistance;
+	double _minDistanceToOtherNode;
+	bool* _nodeIsActiveAddress;
+	double* _nodeXPosAddress;
+	double* _nodeYPosAddress;
+
+	__host__ __device__ AddPtOp(uint maxNodeOfOneCell, double addNodeDistance,
+			double minDistanceToOtherNode, bool* nodeIsActiveAddress,
+			double* nodeXPosAddress, double* nodeYPosAddress) :
+			_maxNodeOfOneCell(maxNodeOfOneCell), _addNodeDistance(
+					addNodeDistance), _minDistanceToOtherNode(
+					minDistanceToOtherNode), _nodeIsActiveAddress(
+					nodeIsActiveAddress), _nodeXPosAddress(nodeXPosAddress), _nodeYPosAddress(
+					nodeYPosAddress) {
+	}
+	__host__ __device__ BoolUI operator()(const BoolUIDDUI &biddi) {
+		const double pI = acos(-1.0);
+		bool isScheduledToGrow = thrust::get < 0 > (biddi);
+		uint activeNodeCountOfThisCell = thrust::get < 1 > (biddi);
+		double cellCenterXCoord = thrust::get < 2 > (biddi);
+		double cellCenterYCoord = thrust::get < 3 > (biddi);
+		uint cellRank = thrust::get < 4 > (biddi);
+		bool isSuccess = true;
+		// we need a good seed for random number generator. combine three parts to get a seed
+		uint seedP1 = uint(cellCenterXCoord * 1.0e5) % 100;
+		seedP1 = (seedP1 ^ 0x761c23c) ^ (seedP1 >> 19);
+		uint seedP2 = uint(cellCenterYCoord * 1.0e5) % 100;
+		seedP2 = (seedP2 + 0x165667b1) + (seedP2 << 5);
+		uint seedP3 = (cellRank + 0x7ed55d16) + (cellRank << 12);
+		uint seed = seedP1 + seedP2 + seedP3;
+		thrust::default_random_engine rng(seed);
+		thrust::uniform_real_distribution<double> u0Pi(0, 2.0 * pI);
+		double randomAngle = u0Pi(rng);
+		double xOffset = _addNodeDistance * cos(randomAngle);
+		double yOffset = _addNodeDistance * sin(randomAngle);
+		double xCoordNewPt = cellCenterXCoord + xOffset;
+		double yCoordNewPt = cellCenterYCoord + yOffset;
+		uint cellNodeStartPos = cellRank * _maxNodeOfOneCell;
+		uint cellNodeEndPos = cellNodeStartPos + activeNodeCountOfThisCell;
+		for (uint i = cellNodeStartPos; i < cellNodeEndPos; i++) {
+			double distance = sqrt(
+					(xCoordNewPt - _nodeXPosAddress[i])
+							* (xCoordNewPt - _nodeXPosAddress[i])
+							+ (yCoordNewPt - _nodeYPosAddress[i])
+									* (yCoordNewPt - _nodeYPosAddress[i]));
+			if (distance < _minDistanceToOtherNode) {
+				isSuccess = false;
+				break;
+			}
+		}
+
+		if (isSuccess) {
+			_nodeXPosAddress[cellNodeEndPos] = xCoordNewPt;
+			_nodeYPosAddress[cellNodeEndPos] = yCoordNewPt;
+			isScheduledToGrow = 0;
+			activeNodeCountOfThisCell = activeNodeCountOfThisCell + 1;
+		}
+
+		return thrust::make_tuple(isScheduledToGrow, activeNodeCountOfThisCell);
 	}
 };
 
@@ -116,6 +180,10 @@ public:
 	// if growthProgress[i] - lastCheckPoint[i] > growThreshold then isScheduledToGrow[i] = true;
 	double growThreshold;
 
+	double addNodeDistance;
+	double minDistanceToOtherNode;
+	double cellInitLength;
+
 	SceNodes* nodes;
 
 	// values of these vectors corresponds to each cell.
@@ -123,6 +191,8 @@ public:
 	// progress == 0 means recently divided
 	// progress == 1 means ready to divide
 	thrust::device_vector<double> growthProgress;
+	thrust::device_vector<double> expectedLength;
+	thrust::device_vector<double> currentLength;
 	thrust::device_vector<uint> activeNodeCountOfThisCell;
 	thrust::device_vector<double> lastCheckPoint;
 	thrust::device_vector<bool> isDivided;

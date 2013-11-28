@@ -6,12 +6,19 @@ __constant__ double gridSpacing;
 double epsilon = 1.0e-12;
 
 SceCells::SceCells(SceNodes* nodesInput) {
+	addNodeDistance =
+			globalConfigVars.getConfigValue("DistanceForAddingNode").toDouble();
+	minDistanceToOtherNode = globalConfigVars.getConfigValue(
+			"MinDistanceToOtherNode").toDouble();
+	cellInitLength =
+			globalConfigVars.getConfigValue("CellInitLength").toDouble();
 	maxNodeOfOneCell = nodesInput->getMaxNodeOfOneCell();
 	maxCellCount = nodesInput->getMaxCellCount();
 	maxTotalCellNodeCount = nodesInput->getMaxTotalCellNodeCount();
 	currentActiveCellCount = nodesInput->getCurrentActiveCellCount();
 	nodes = nodesInput;
 	growthProgress.resize(maxCellCount, 0.0);
+	expectedLength.resize(maxCellCount, cellInitLength);
 	activeNodeCountOfThisCell.resize(maxCellCount);
 	lastCheckPoint.resize(maxCellCount, 0.0);
 	isDivided.resize(maxCellCount);
@@ -154,17 +161,23 @@ void SceCells::grow2DSimplified(double dt,
 			&(nodes->nodeIsActive[0]));
 	double* nodeXPosAddress = thrust::raw_pointer_cast(&(nodes->nodeLocX[0]));
 	double* nodeYPosAddress = thrust::raw_pointer_cast(&(nodes->nodeLocY[0]));
+	thrust::counting_iterator<uint> countingBegin(0);
 	thrust::transform(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(isScheduledToGrow.begin(),
+							activeNodeCountOfThisCell.begin(),
+							centerCoordX.begin(), centerCoordY.begin(),
+							countingBegin)),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(isScheduledToGrow.begin(),
+							activeNodeCountOfThisCell.begin(),
+							centerCoordX.begin(), centerCoordY.begin(),
+							countingBegin)) + currentActiveCellCount,
+			thrust::make_zip_iterator(
+					thrust::make_tuple(isScheduledToGrow.begin(),
 							activeNodeCountOfThisCell.begin())),
-			thrust::make_zip_iterator(
-					thrust::make_tuple(isScheduledToGrow.begin(),
-							activeNodeCountOfThisCell.begin()))
-					+ currentActiveCellCount,
-			thrust::make_zip_iterator(
-					thrust::make_tuple(isScheduledToGrow.begin(),
-							activeNodeCountOfThisCell.begin())), AddPtOp());
+			AddPtOp(maxNodeOfOneCell, addNodeDistance, minDistanceToOtherNode,
+					nodeIsActiveAddress, nodeXPosAddress, nodeYPosAddress));
 	// fifth step: use growthProgress and growthXDir&growthYDir to compute
 	// expected length along the growth direction.
 
@@ -173,6 +186,6 @@ void SceCells::grow2DSimplified(double dt,
 
 	// seventh step: use the difference that just computed and growthXDir&growthYDir
 	// to apply stretching force (velocity) on nodes of all cells
-	thrust::transform();
+	//thrust::transform();
 }
 

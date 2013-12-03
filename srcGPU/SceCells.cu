@@ -292,3 +292,118 @@ void SceCells::grow2DSimplified(double dt,
 			ApplyStretchForce(elongationCoefficient));
 }
 
+void SceCells::divide2DSimplified() {
+	// step 1 : copy all cell rank and distance to its corresponding center with divide flag = 1
+	uint totalNodeCountForActiveCells = currentActiveCellCount
+			* maxNodeOfOneCell;
+	uint toBeDivideCount = thrust::reduce(isDivided.begin(),
+			isDivided.begin() + currentActiveCellCount);
+	uint nodeStorageCount = currentActiveCellCount * maxNodeOfOneCell;
+	thrust::device_vector<bool> tmpIsActiveHold1(nodeStorageCount, true);
+	thrust::device_vector<double> tmpDistToCenter1(nodeStorageCount, 0.0);
+	thrust::device_vector<uint> tmpCellRankHold1(nodeStorageCount, 0.0);
+	thrust::device_vector<double> tmpXValueHold1(nodeStorageCount, 0.0);
+	thrust::device_vector<double> tmpYValueHold1(nodeStorageCount, 0.0);
+	thrust::device_vector<double> tmpZValueHold1(nodeStorageCount, 0.0);
+
+	thrust::device_vector<bool> tmpIsActiveHold2(nodeStorageCount, false);
+	thrust::device_vector<double> tmpDistToCenter2(nodeStorageCount, 0.0);
+	thrust::device_vector<double> tmpXValueHold2(nodeStorageCount, 0.0);
+	thrust::device_vector<double> tmpYValueHold2(nodeStorageCount, 0.0);
+	thrust::device_vector<double> tmpZValueHold2(nodeStorageCount, 0.0);
+
+	thrust::counting_iterator<uint> countingBegin(0);
+
+	thrust::copy_if(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(
+							make_transform_iterator(countingBegin,
+									DivideFunctor(maxNodeOfOneCell)),
+							distToCenterAlongGrowDir.begin(),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeLocZ.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(
+							make_transform_iterator(countingBegin,
+									DivideFunctor(maxNodeOfOneCell)),
+							distToCenterAlongGrowDir.begin(),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeLocZ.begin()))
+					+ totalNodeCountForActiveCells,
+			thrust::make_permutation_iterator(isDivided.begin(),
+					make_transform_iterator(countingBegin,
+							DivideFunctor(maxNodeOfOneCell))),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpCellRankHold1.begin(),
+							tmpDistToCenter1.begin(), tmpXValueHold1.begin(),
+							tmpYValueHold1.begin(), tmpZValueHold1.begin())),
+			isTrue());
+	// step 2 : sort_by_key and copy its median value to a temp array.
+	for (uint i = 0; i < toBeDivideCount; i++) {
+		thrust::sort_by_key(tmpDistToCenter1.begin() + i * maxNodeOfOneCell,
+				tmpDistToCenter1.begin() + (i + 1) * maxNodeOfOneCell,
+				thrust::make_zip_iterator(
+						thrust::make_tuple(
+								tmpXValueHold1.begin() + i * maxNodeOfOneCell,
+								tmpYValueHold1.begin() + i * maxNodeOfOneCell,
+								tmpZValueHold1.begin()
+										+ i * maxNodeOfOneCell)));
+	}
+	thrust::scatter_if(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpXValueHold2.begin(),
+							tmpYValueHold2.begin(), tmpZValueHold2.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpXValueHold2.begin(),
+							tmpYValueHold2.begin(), tmpZValueHold2.begin()))
+					+ nodeStorageCount,
+			make_transform_iterator(countingBegin,
+					LeftShiftFunctor(maxNodeOfOneCell)),
+			IsRightSide(maxNodeOfOneCell),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpXValueHold2.begin(),
+							tmpYValueHold2.begin(), tmpZValueHold2.begin())));
+	thrust::transform(tmpIsActiveHold1.begin(),
+			tmpIsActiveHold1.begin() + nodeStorageCount,
+			tmpIsActiveHold1.begin(), KeepLeftAsActive());
+	thrust::transform(tmpIsActiveHold2.begin(),
+			tmpIsActiveHold2.begin() + nodeStorageCount,
+			tmpIsActiveHold2.begin(), KeepLeftAsActive());
+	thrust::copy(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpIsActiveHold2.begin(),
+							tmpXValueHold2.begin(), tmpYValueHold2.begin(),
+							tmpZValueHold2.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpIsActiveHold2.end(),
+							tmpXValueHold2.end(), tmpYValueHold2.end()),
+					tmpZValueHold2.end()),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeIsActive.begin(),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeLocZ.begin()))
+					+ totalNodeCountForActiveCells);
+	// step 3 : use the temp array to assign isActive.
+	// step 4 : rearrange the order of node coordinates by isActive. put true together and false together.
+	// step 5 : stream compact those divide flag = 1 and isActive = false to temp divide stroage
+	// step 6 : change those temp storage to new cells.
+	thrust::scatter(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpIsActiveHold1.begin(),
+							tmpXValueHold1.begin(), tmpYValueHold1.begin(),
+							tmpZValueHold1.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(tmpIsActiveHold1.end(),
+							tmpXValueHold1.end(), tmpYValueHold1.end()),
+					tmpZValueHold1.end()),
+			thrust::make_transform_iterator(
+					thrust::make_tuple(countingBegin,
+							tmpCellRankHold1.begin()),CompuPos(maxNodeOfOneCell)),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeIsActive.begin(),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeLocZ.begin())));
+
+	currentActiveCellCount = currentActiveCellCount + toBeDivideCount;
+	nodes->setCurrentActiveCellCount(currentActiveCellCount);
+}

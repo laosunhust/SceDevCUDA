@@ -24,20 +24,22 @@
 #include "ConfigParser.h"
 #include <assert.h>
 
-/*
- * To maximize GPU performance, I choose to implement Structure of Arrays(SOA)
- * instead of Array Of Structure, which is commonly used in serial algorithms.
- * This data structure is a little bit counter-uintuitive, but would expect to
- * give 2X - 3X performance gain.
- * To gain a better performance on GPU, we pre-allocate memory for everything that
- * will potentially
- * This data structure need to be initialized with following parameters:
- * 1) maximum number of cells to be simulated in the simulation domain
- * 2) maximum number of nodes inside a cell
- * 3) maximum number of uintra-cellular links per node
- * 4) maximum number of uinter-cellular links per node
+/**
+ * @mainpage chicken beak development project main documentation page
  *
+ * @author Wenzhao Sun wsun2@nd.edu
+ *
+ *  1) The goal of the project is to simulate a developmental biology phenomenon
+ *  that the shape of the beak is changed from normal triangular shape to
+ *  a hooked shape after being treated by VPA, which will support our hypothesis
+ *  that the final shape of the chicken beak is determined by the mechanical interaction between cells.
+ *
+ *  2) There are five essential parts in our simulation model -
+ *  FNM bud, MX bud, ECM, epithelium, and external chemical, which is FGF signal.
+ *
+ *  3) The approximate time scale of our simulation is several days. (day 8 - day 11)?
  */
+
 typedef unsigned int uint;
 typedef thrust::tuple<double, double> CVec2;
 typedef thrust::tuple<bool, double> BoolD;
@@ -331,6 +333,19 @@ struct AddSceForce: public thrust::unary_function<Tuuuddd, CVec3> {
 	}
 };
 
+/**
+ * To maximize GPU performance, I choose to implement Structure of Arrays(SOA)
+ * instead of Array Of Structure, which is commonly used in serial algorithms.
+ * This data structure is a little bit counter-uintuitive, but would expect to
+ * give 2X - 3X performance gain.
+ * To gain a better performance on GPU, we pre-allocate memory for everything that
+ * will potentially
+ * This data structure need to be initialized with following parameters:
+ * 1) maximum number of cells to be simulated in the simulation domain
+ * 2) maximum number of nodes inside a cell
+ * 3) maximum number of uintra-cellular links per node
+ * 4) maximum number of uinter-cellular links per node
+ */
 class SceNodes {
 public:
 	SceNodes(uint maxTotalCellCount, uint maxNodeInCell);

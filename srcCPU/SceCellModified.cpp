@@ -294,6 +294,7 @@ void SceCell::growAsScheduled() {
 		growthCountDown--;
 	}
 }
+
 void SceCell::runGrowthLogic(double dt) {
 	if (!isScheduledToGrow()) {
 		scheduleToGrow(dt);

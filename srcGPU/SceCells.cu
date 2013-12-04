@@ -118,6 +118,24 @@ void SceCells::computeCenterPos() {
 			CVec3Divide());
 }
 
+/*
+ * This is a simplified method for cell growth.
+ * first step: assign the growth magnitude and direction info that was calculated outside
+ *     to internal values
+ * second step: use the growth magnitude and dt to update growthProgress
+ * third step: use lastCheckPoint and growthProgress to decide whether add point or not
+ * fourth step: also add a point if scheduled to grow.
+ *     This step does not guarantee success ; If adding new point failed, it will not change
+ *     isScheduleToGrow and activeNodeCount;
+ * fifth step: use growthProgress and growthXDir&growthYDir to compute
+ *     expected length along the growth direction.
+ * sixth step:  reducing the smallest value and biggest value
+ *     a cell's node to its center point
+ * seventh step: compute the current length and then
+ *     compute its difference with expected length
+ * eighth step: use the difference that just computed and growthXDir&growthYDir
+ *     to apply stretching force (velocity) on nodes of all cells
+ */
 void SceCells::grow2DSimplified(double dt,
 		thrust::device_vector<double> &growthFactorMag,
 		thrust::device_vector<double> &growthFactorDirXComp,
@@ -292,6 +310,15 @@ void SceCells::grow2DSimplified(double dt,
 			ApplyStretchForce(elongationCoefficient));
 }
 
+/**
+ * Division process is done by creating two temporary vectors to hold the node information
+ * that are going to divide.
+ * step 1. copy those cells that will divide in to the temp vectors created
+ * Then for each cell we sort its nodes by its distance to the cell center.
+ * This step is not very ineffcient when the number of cells going to divide is big.
+ * but this is unlikely to happen because cells will divide according to external chemical signaling
+ * and each will have different divide progress.
+ */
 void SceCells::divide2DSimplified() {
 	// step 1 : copy all cell rank and distance to its corresponding center with divide flag = 1
 	uint totalNodeCountForActiveCells = currentActiveCellCount
@@ -338,7 +365,6 @@ void SceCells::divide2DSimplified() {
 							tmpDistToCenter1.begin(), tmpXValueHold1.begin(),
 							tmpYValueHold1.begin(), tmpZValueHold1.begin())),
 			isTrue());
-	// step 2 : sort_by_key and copy its median value to a temp array.
 	for (uint i = 0; i < toBeDivideCount; i++) {
 		thrust::sort_by_key(tmpDistToCenter1.begin() + i * maxNodeOfOneCell,
 				tmpDistToCenter1.begin() + (i + 1) * maxNodeOfOneCell,
@@ -359,16 +385,17 @@ void SceCells::divide2DSimplified() {
 					+ nodeStorageCount,
 			make_transform_iterator(countingBegin,
 					LeftShiftFunctor(maxNodeOfOneCell)),
-			IsRightSide(maxNodeOfOneCell),
+			make_transform_iterator(countingBegin,
+					IsRightSide(maxNodeOfOneCell)),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpXValueHold2.begin(),
 							tmpYValueHold2.begin(), tmpZValueHold2.begin())));
 	thrust::transform(tmpIsActiveHold1.begin(),
 			tmpIsActiveHold1.begin() + nodeStorageCount,
-			tmpIsActiveHold1.begin(), KeepLeftAsActive());
+			tmpIsActiveHold1.begin(), IsLeftSide(maxNodeOfOneCell));
 	thrust::transform(tmpIsActiveHold2.begin(),
 			tmpIsActiveHold2.begin() + nodeStorageCount,
-			tmpIsActiveHold2.begin(), KeepLeftAsActive());
+			tmpIsActiveHold2.begin(), IsLeftSide(maxNodeOfOneCell));
 	thrust::copy(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpIsActiveHold2.begin(),
@@ -376,17 +403,13 @@ void SceCells::divide2DSimplified() {
 							tmpZValueHold2.begin())),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpIsActiveHold2.end(),
-							tmpXValueHold2.end(), tmpYValueHold2.end()),
-					tmpZValueHold2.end()),
+							tmpXValueHold2.end(), tmpYValueHold2.end(),
+							tmpZValueHold2.end())),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(nodes->nodeIsActive.begin(),
 							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
 							nodes->nodeLocZ.begin()))
 					+ totalNodeCountForActiveCells);
-	// step 3 : use the temp array to assign isActive.
-	// step 4 : rearrange the order of node coordinates by isActive. put true together and false together.
-	// step 5 : stream compact those divide flag = 1 and isActive = false to temp divide stroage
-	// step 6 : change those temp storage to new cells.
 	thrust::scatter(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpIsActiveHold1.begin(),
@@ -394,11 +417,13 @@ void SceCells::divide2DSimplified() {
 							tmpZValueHold1.begin())),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpIsActiveHold1.end(),
-							tmpXValueHold1.end(), tmpYValueHold1.end()),
-					tmpZValueHold1.end()),
+							tmpXValueHold1.end(), tmpYValueHold1.end(),
+							tmpZValueHold1.end())),
 			thrust::make_transform_iterator(
-					thrust::make_tuple(countingBegin,
-							tmpCellRankHold1.begin()),CompuPos(maxNodeOfOneCell)),
+					thrust::make_zip_iterator(
+							thrust::make_tuple(countingBegin,
+									tmpCellRankHold1.begin())),
+					CompuPos(maxNodeOfOneCell)),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(nodes->nodeIsActive.begin(),
 							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),

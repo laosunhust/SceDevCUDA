@@ -18,7 +18,7 @@ struct ModuloFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ ModuloFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__ __device__ uint operator()(const uint &num) {
+	__host__  __device__ uint operator()(const uint &num) {
 		return num % dividend;
 	}
 };
@@ -65,7 +65,7 @@ struct LoadGridDataToNode: public thrust::unary_function<CVec2, CVec3> {
 					gridSpacing), _gridMagValue(gridMagValue), _gridDirXCompValue(
 					gridDirXCompValue), _gridDirYCompValue(gridDirYCompValue) {
 	}
-	__host__ __device__ CVec3 operator()(const CVec2 &d2) const {
+	__host__                  __device__ CVec3 operator()(const CVec2 &d2) const {
 		double xCoord = thrust::get < 0 > (d2);
 		double yCoord = thrust::get < 1 > (d2);
 		uint gridLoc = (uint) (xCoord / _gridSpacing)
@@ -92,7 +92,7 @@ struct PtCondiOp: public thrust::unary_function<CVec2, BoolD> {
 	__host__ __device__ PtCondiOp(double threshold) :
 			_threshold(threshold) {
 	}
-	__host__       __device__ BoolD operator()(const CVec2 &d2) const {
+	__host__         __device__ BoolD operator()(const CVec2 &d2) const {
 		double progress = thrust::get < 0 > (d2);
 		double lastCheckPoint = thrust::get < 1 > (d2);
 		bool resBool = false;
@@ -179,10 +179,25 @@ struct CompuTarLen: thrust::unary_function<double, double> {
 	}
 };
 
-//TODO: complete this function
 struct CompuDist: thrust::unary_function<CVec6Bool, double> {
 	__host__ __device__ double operator()(const CVec6Bool &vec6b) {
-		return 0.0;
+		double centerXPos = thrust::get < 0 > (vec6b);
+		double centerYPos = thrust::get < 1 > (vec6b);
+		double growthXDir = thrust::get < 2 > (vec6b);
+		double growthYDir = thrust::get < 3 > (vec6b);
+		double nodeXPos = thrust::get < 4 > (vec6b);
+		double nodeYPos = thrust::get < 5 > (vec6b);
+		bool nodeIsActive = thrust::get < 6 > (vec6b);
+		if (nodeIsActive == false) {
+			// this is not true. but those nodes that are inactive will be omitted.
+			// I choose 0 because 0 will not be either maximum or minimum
+			return 0;
+		} else {
+			double dirModule = sqrt(
+					growthXDir * growthXDir + growthYDir * growthYDir);
+			return ((nodeXPos - centerXPos) * (growthXDir)
+					+ (nodeYPos - centerYPos) * growthYDir) / dirModule;
+		}
 	}
 };
 
@@ -197,18 +212,85 @@ struct CompuDiff: thrust::unary_function<CVec3, double> {
 };
 
 //TODO: complete this function
+//CVector elongationForce = distInElongationDirection * elongationPara
+//				* elongateDirection;
 struct ApplyStretchForce: thrust::unary_function<CVec4, CVec2> {
 	double _elongationCoefficient;
 	__host__ __device__ ApplyStretchForce(double elongationCoefficient) :
 			_elongationCoefficient(elongationCoefficient) {
 	}
-	__host__  __device__ CVec2 operator()(const CVec4 &vec4) {
+	__host__ __device__ CVec2 operator()(const CVec4 &vec4) {
 		double distToCenterAlongGrowDir = thrust::get < 0 > (vec4);
 		// minimum distance of node to its corresponding center along growth direction
 		double lengthDifference = thrust::get < 1 > (vec4);
 		double growthXDir = thrust::get < 2 > (vec4);
 		double growthYDir = thrust::get < 3 > (vec4);
-		return thrust::make_tuple(0.0, 0.0);
+		double xRes = lengthDifference * _elongationCoefficient
+				* distToCenterAlongGrowDir * growthXDir;
+		double yRes = lengthDifference * _elongationCoefficient
+				* distToCenterAlongGrowDir * growthYDir;
+		return thrust::make_tuple(xRes, yRes);
+	}
+};
+
+struct LeftShiftFunctor: thrust::unary_function<uint, uint> {
+	uint _shiftLeftOffset;
+	__host__ __device__ LeftShiftFunctor(uint maxNodeOfOneCell) :
+			_shiftLeftOffset(maxNodeOfOneCell / 2) {
+	}
+	__host__         __device__ uint operator()(const uint &position) {
+		uint result;
+		if (position < _shiftLeftOffset) {
+			// could be 0, because these region will actually never be used
+			result = 0;
+		} else {
+			result = position - _shiftLeftOffset;
+		}
+		return result;
+	}
+};
+
+struct IsRightSide: thrust::unary_function<uint, bool> {
+	uint _maxNodeCountPerCell;
+	uint _halfMaxNode;
+	__host__ __device__ IsRightSide(uint maxNodeOfOneCell) :
+			_maxNodeCountPerCell(maxNodeOfOneCell), _halfMaxNode(
+					maxNodeOfOneCell / 2) {
+	}
+	__host__ __device__ bool operator()(const uint &position) {
+		if (position % _maxNodeCountPerCell < _halfMaxNode) {
+			return false;
+		} else {
+			return true;
+		}
+	}
+};
+
+struct IsLeftSide: thrust::unary_function<uint, bool> {
+	uint _maxNodeCountPerCell;
+	uint _halfMaxNode;
+	__host__ __device__ IsLeftSide(uint maxNodeOfOneCell) :
+			_maxNodeCountPerCell(maxNodeOfOneCell), _halfMaxNode(
+					maxNodeOfOneCell / 2) {
+	}
+	__host__ __device__ bool operator()(const uint &position) {
+		if (position % _maxNodeCountPerCell < _halfMaxNode) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+};
+
+struct CompuPos: thrust::unary_function<Tuint2, uint> {
+	uint _maxNodeCountPerCell;
+	__host__ __device__ CompuPos(uint maxNodeOfOneCell) :
+			_maxNodeCountPerCell(maxNodeOfOneCell) {
+	}
+	__host__         __device__ uint operator()(const Tuint2 &vec) {
+		uint rankInCell = thrust::get < 0 > (vec) % _maxNodeCountPerCell;
+		uint cellRank = thrust::get < 1 > (vec);
+		return (cellRank * _maxNodeCountPerCell + rankInCell);
 	}
 };
 

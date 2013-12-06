@@ -44,7 +44,7 @@ struct AuxStruct {
 	double value;
 };
 
-/*
+/**
  * Auxiliary comparison operator
  */
 struct AuxCompOp {

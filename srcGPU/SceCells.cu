@@ -5,6 +5,12 @@ __constant__ double gridSpacing;
 
 double epsilon = 1.0e-12;
 
+/**
+ * constructor for SceCells.
+ * takes SceNodes, which is a pre-allocated multi-array, as input argument.
+ * This might be strange from a design perspective but has a better performance
+ * while running on parallel.
+ */
 SceCells::SceCells(SceNodes* nodesInput) {
 	addNodeDistance =
 			globalConfigVars.getConfigValue("DistanceForAddingNode").toDouble();
@@ -51,6 +57,13 @@ SceCells::SceCells(SceNodes* nodesInput) {
 	growThreshold = 1.0 / (maxNodeOfOneCell - maxNodeOfOneCell / 2);
 }
 
+/**
+ * Mark cell node as either active or inactive.
+ * left part of the node array will be active and right part will be inactive.
+ * the threshold is defined by array @activeNodeCountOfThisCell.
+ * e.g. activeNodeCountOfThisCell = {2,3} and  maxNodeOfOneCell = 5,
+ *
+ */
 void SceCells::distributeIsActiveInfo() {
 	uint totalNodeCountForActiveCells = currentActiveCellCount
 			* maxNodeOfOneCell;
@@ -67,6 +80,10 @@ void SceCells::distributeIsActiveInfo() {
 			nodes->nodeIsActive.begin(), thrust::less<uint>());
 }
 
+/**
+ * This method computes center of all cells.
+ * more efficient then simply iterating the cell because of parallel reducing.
+ */
 void SceCells::computeCenterPos() {
 	uint totalNodeCountForActiveCells = currentActiveCellCount
 			* maxNodeOfOneCell;
@@ -118,23 +135,32 @@ void SceCells::computeCenterPos() {
 			CVec3Divide());
 }
 
-/*
+/**
  * This is a simplified method for cell growth.
  * first step: assign the growth magnitude and direction info that was calculated outside
  *     to internal values
+ *
  * second step: use the growth magnitude and dt to update growthProgress
+ *
  * third step: use lastCheckPoint and growthProgress to decide whether add point or not
- * fourth step: also add a point if scheduled to grow.
+ *
+ * fourth step: use growthProgress and growthXDir&growthYDir to compute
+ *     expected length along the growth direction.
+ *
+ * fifth step:  reducing the smallest value and biggest value
+ *     a cell's node to its center point
+ *
+ * sixth step: compute the current length and then
+ *     compute its difference with expected length
+ *
+ * seventh step: use the difference that just computed and growthXDir&growthYDir
+ *     to apply stretching force (velocity) on nodes of all cells
+ *
+ * eighth step: cell move according to the velocity computed
+ *
+ * ninth step: also add a point if scheduled to grow.
  *     This step does not guarantee success ; If adding new point failed, it will not change
  *     isScheduleToGrow and activeNodeCount;
- * fifth step: use growthProgress and growthXDir&growthYDir to compute
- *     expected length along the growth direction.
- * sixth step:  reducing the smallest value and biggest value
- *     a cell's node to its center point
- * seventh step: compute the current length and then
- *     compute its difference with expected length
- * eighth step: use the difference that just computed and growthXDir&growthYDir
- *     to apply stretching force (velocity) on nodes of all cells
  */
 void SceCells::grow2DSimplified(double dt,
 		thrust::device_vector<double> &growthFactorMag,
@@ -143,6 +169,7 @@ void SceCells::grow2DSimplified(double dt,
 		uint GridDimensionX, uint GridDimensionY, double GridSpacing) {
 	//first step: assign the growth magnitude and direction info that was calculated outside
 	//to internal values
+	thrust::counting_iterator<uint> countingBegin(0);
 	double* growthFactorMagAddress = thrust::raw_pointer_cast(
 			&growthFactorMag[0]);
 	double* growthFactorDirXAddress = thrust::raw_pointer_cast(
@@ -177,37 +204,13 @@ void SceCells::grow2DSimplified(double dt,
 			thrust::make_zip_iterator(
 					thrust::make_tuple(isScheduledToGrow.begin(),
 							lastCheckPoint.begin())), PtCondiOp(growThreshold));
-	// fourth step: also add a point if scheduled to grow.
-	// This step does not guarantee success ; If adding new point failed, it will not change
-	// isScheduleToGrow and activeNodeCount;
-	bool* nodeIsActiveAddress = thrust::raw_pointer_cast(
-			&(nodes->nodeIsActive[0]));
-	double* nodeXPosAddress = thrust::raw_pointer_cast(&(nodes->nodeLocX[0]));
-	double* nodeYPosAddress = thrust::raw_pointer_cast(&(nodes->nodeLocY[0]));
-	thrust::counting_iterator<uint> countingBegin(0);
-	thrust::transform(
-			thrust::make_zip_iterator(
-					thrust::make_tuple(isScheduledToGrow.begin(),
-							activeNodeCountOfThisCell.begin(),
-							centerCoordX.begin(), centerCoordY.begin(),
-							countingBegin)),
-			thrust::make_zip_iterator(
-					thrust::make_tuple(isScheduledToGrow.begin(),
-							activeNodeCountOfThisCell.begin(),
-							centerCoordX.begin(), centerCoordY.begin(),
-							countingBegin)) + currentActiveCellCount,
-			thrust::make_zip_iterator(
-					thrust::make_tuple(isScheduledToGrow.begin(),
-							activeNodeCountOfThisCell.begin())),
-			AddPtOp(maxNodeOfOneCell, addNodeDistance, minDistanceToOtherNode,
-					nodeIsActiveAddress, nodeXPosAddress, nodeYPosAddress));
-	// fifth step: use growthProgress and growthXDir&growthYDir to compute
+	// fourth step: use growthProgress and growthXDir&growthYDir to compute
 	// expected length along the growth direction.
 	thrust::transform(growthProgress.begin(),
 			growthProgress.begin() + currentActiveCellCount,
 			expectedLength.begin(),
 			CompuTarLen(cellInitLength, cellFinalLength));
-	// sixth step:  reducing the smallest value and biggest value
+	// fifth step:  reducing the smallest value and biggest value
 	// a cell's node to its center point
 	uint totalNodeCountForActiveCells = currentActiveCellCount
 			* maxNodeOfOneCell;
@@ -267,7 +270,7 @@ void SceCells::grow2DSimplified(double dt,
 			distToCenterAlongGrowDir.begin(), cellRanksTmpStorage.begin(),
 			biggestDistance.begin(), thrust::equal_to<uint>(),
 			thrust::maximum<double>());
-	// seventh step: compute the current length and then
+	// sixth step: compute the current length and then
 	// compute its difference with expected length
 	thrust::transform(
 			thrust::make_zip_iterator(
@@ -278,8 +281,8 @@ void SceCells::grow2DSimplified(double dt,
 							smallestDistance.begin(), biggestDistance.begin()))
 					+ currentActiveCellCount, lengthDifference.begin(),
 			CompuDiff());
-// eighth step: use the difference that just computed and growthXDir&growthYDir
-// to apply stretching force (velocity) on nodes of all cells
+	// seventh step: use the difference that just computed and growthXDir&growthYDir
+	// to apply stretching force (velocity) on nodes of all cells
 	thrust::transform(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(distToCenterAlongGrowDir.begin(),
@@ -308,19 +311,82 @@ void SceCells::grow2DSimplified(double dt,
 					thrust::make_tuple(nodes->nodeVelX.begin(),
 							nodes->nodeVelY.begin())),
 			ApplyStretchForce(elongationCoefficient));
+
+	// eighth step: move the cell nodes according to velocity, if the node is active
+	thrust::transform_if(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeVelX.begin(),
+							nodes->nodeVelY.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeVelX.begin(),
+							nodes->nodeVelY.begin()))
+					+ totalNodeCountForActiveCells,
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeLocX.begin(),
+							nodes->nodeLocY.begin())),
+			nodes->nodeIsActive.begin(),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeLocX.begin(),
+							nodes->nodeLocY.begin())), SaxpyFunctorDim2(dt),
+			isTrue());
+
+	// ninth step: also add a point if scheduled to grow.
+	// This step does not guarantee success ; If adding new point failed, it will not change
+	// isScheduleToGrow and activeNodeCount;
+	bool* nodeIsActiveAddress = thrust::raw_pointer_cast(
+			&(nodes->nodeIsActive[0]));
+	double* nodeXPosAddress = thrust::raw_pointer_cast(&(nodes->nodeLocX[0]));
+	double* nodeYPosAddress = thrust::raw_pointer_cast(&(nodes->nodeLocY[0]));
+
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(isScheduledToGrow.begin(),
+							activeNodeCountOfThisCell.begin(),
+							centerCoordX.begin(), centerCoordY.begin(),
+							countingBegin)),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(isScheduledToGrow.begin(),
+							activeNodeCountOfThisCell.begin(),
+							centerCoordX.begin(), centerCoordY.begin(),
+							countingBegin)) + currentActiveCellCount,
+			thrust::make_zip_iterator(
+					thrust::make_tuple(isScheduledToGrow.begin(),
+							activeNodeCountOfThisCell.begin())),
+			AddPtOp(maxNodeOfOneCell, addNodeDistance, minDistanceToOtherNode,
+					nodeIsActiveAddress, nodeXPosAddress, nodeYPosAddress));
 }
 
 /**
+ * 2D version of cell division.
  * Division process is done by creating two temporary vectors to hold the node information
  * that are going to divide.
- * step 1. copy those cells that will divide in to the temp vectors created
- * Then for each cell we sort its nodes by its distance to the cell center.
- * This step is not very ineffcient when the number of cells going to divide is big.
+ *
+ * step 1: based on lengthDifference, expectedLength and growthProgress,
+ *     we could obtain whether this cell is ready to divide and assign value to isDivided.
+ *
+ * step 2. copy those cells that will divide in to the temp vectors created
+ *
+ * step 3. For each cell in the temp vectors, we sort its nodes by its distance to the
+ * corresponding cell center.
+ * This step is not very effcient when the number of cells going to divide is big.
  * but this is unlikely to happen because cells will divide according to external chemical signaling
  * and each will have different divide progress.
+ *
+ * step 4. copy the right part of each cell of the sorted array (temp1) to left part of each cell of
+ * another array
+ *
+ * step 5. transform isActive vector of both temp1 and temp2, making only left part of each cell active.
+ *
+ * step 6. insert temp2 to the end of the cell array
+ *
+ * step 7. copy temp1 to the previous position of the cell array.
+ *
+ * step 8. add activeCellCount of the system.
  */
 void SceCells::divide2DSimplified() {
-	// step 1 : copy all cell rank and distance to its corresponding center with divide flag = 1
+	//TODO: step 1
+
+	// step 2 : copy all cell rank and distance to its corresponding center with divide flag = 1
 	uint totalNodeCountForActiveCells = currentActiveCellCount
 			* maxNodeOfOneCell;
 	uint toBeDivideCount = thrust::reduce(isDivided.begin(),
@@ -341,6 +407,7 @@ void SceCells::divide2DSimplified() {
 
 	thrust::counting_iterator<uint> countingBegin(0);
 
+	// step 2
 	thrust::copy_if(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(
@@ -365,6 +432,7 @@ void SceCells::divide2DSimplified() {
 							tmpDistToCenter1.begin(), tmpXValueHold1.begin(),
 							tmpYValueHold1.begin(), tmpZValueHold1.begin())),
 			isTrue());
+	//step 3
 	for (uint i = 0; i < toBeDivideCount; i++) {
 		thrust::sort_by_key(tmpDistToCenter1.begin() + i * maxNodeOfOneCell,
 				tmpDistToCenter1.begin() + (i + 1) * maxNodeOfOneCell,
@@ -396,20 +464,26 @@ void SceCells::divide2DSimplified() {
 	thrust::transform(tmpIsActiveHold2.begin(),
 			tmpIsActiveHold2.begin() + nodeStorageCount,
 			tmpIsActiveHold2.begin(), IsLeftSide(maxNodeOfOneCell));
-	thrust::copy(
-			thrust::make_zip_iterator(
-					thrust::make_tuple(tmpIsActiveHold2.begin(),
-							tmpXValueHold2.begin(), tmpYValueHold2.begin(),
-							tmpZValueHold2.begin())),
-			thrust::make_zip_iterator(
-					thrust::make_tuple(tmpIsActiveHold2.end(),
-							tmpXValueHold2.end(), tmpYValueHold2.end(),
-							tmpZValueHold2.end())),
-			thrust::make_zip_iterator(
-					thrust::make_tuple(nodes->nodeIsActive.begin(),
-							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
-							nodes->nodeLocZ.begin()))
-					+ totalNodeCountForActiveCells);
+	/// call SceNodes function to add newly divided cells
+	nodes->addNewlyDividedCells(tmpXValueHold2, tmpYValueHold2, tmpZValueHold2,
+			tmpIsActiveHold2);
+	/*
+	 thrust::copy(
+	 thrust::make_zip_iterator(
+	 thrust::make_tuple(tmpIsActiveHold2.begin(),
+	 tmpXValueHold2.begin(), tmpYValueHold2.begin(),
+	 tmpZValueHold2.begin())),
+	 thrust::make_zip_iterator(
+	 thrust::make_tuple(tmpIsActiveHold2.end(),
+	 tmpXValueHold2.end(), tmpYValueHold2.end(),
+	 tmpZValueHold2.end())),
+	 thrust::make_zip_iterator(
+	 thrust::make_tuple(nodes->nodeIsActive.begin(),
+	 nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+	 nodes->nodeLocZ.begin()))
+	 + totalNodeCountForActiveCells);
+	 */
+	//step 7
 	thrust::scatter(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpIsActiveHold1.begin(),
@@ -429,6 +503,27 @@ void SceCells::divide2DSimplified() {
 							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
 							nodes->nodeLocZ.begin())));
 
+	//step 8
 	currentActiveCellCount = currentActiveCellCount + toBeDivideCount;
 	nodes->setCurrentActiveCellCount(currentActiveCellCount);
+}
+
+/**
+ * All cells first grow, then divide.
+ * @param dt timestep of the system
+ * @param growthFactorMag magnitude of growth
+ * @param growthFactorDirXComp x component of the direction of growth
+ * @param growthFactorDirYComp y component of the direction of growth
+ * @param GridDimensionX number of points in X direction
+ * @param GridDimensionY number of points in Y direction
+ * @param GridSpacing spacing of the growth grid
+ */
+void SceCells::growAndDivide(double dt,
+		thrust::device_vector<double> &growthFactorMag,
+		thrust::device_vector<double> &growthFactorDirXComp,
+		thrust::device_vector<double> &growthFactorDirYComp,
+		uint GridDimensionX, uint GridDimensionY, double GridSpacing) {
+	grow2DSimplified(dt, growthFactorMag, growthFactorDirXComp,
+			growthFactorDirYComp, GridDimensionX, GridDimensionY, GridSpacing);
+	divide2DSimplified();
 }

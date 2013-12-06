@@ -29,6 +29,11 @@
  *
  * @author Wenzhao Sun wsun2@nd.edu
  *
+ *  This simulation package is highly dependent on Thrust library, which is an official
+ *  fast - GPU development toolkit released by NVIDIA research.
+ *  The code requires CMake to build. When making project, html stype documentation will be
+ *  automatically generated in "html" folder in project root directory.
+ *
  *  1) The goal of the project is to simulate a developmental biology phenomenon
  *  that the shape of the beak is changed from normal triangular shape to
  *  a hooked shape after being treated by VPA, which will support our hypothesis
@@ -402,7 +407,7 @@ public:
 	// bucket value expanded means each point ( represented by its global rank) will have multiple copies
 	thrust::device_vector<uint> bucketValuesIncludingNeighbor;
 
-	/*
+	/**
 	 * this method maps the points to their bucket ID.
 	 * writes data to thrust::device_vector<uint> bucketValues and
 	 * thrust::device_vector<uint> bucketValues;
@@ -416,18 +421,18 @@ public:
 	 */
 	void extendBuckets2D(uint numOfBucketsInXDim, uint numOfBucketsInYDim);
 
-	/*
+	/**
 	 * apply sce forces
 	 */
 	void applySceForces(uint numOfBucketsInXDim, uint numOfBucketsInYDim);
 
-	/*
+	/**
 	 * wrap three methods together.
 	 */
 	void calculateAndApplySceForces(double minX, double maxX, double minY,
 			double maxY, double bucketSize);
 
-	/*
+	/**
 	 * add maxNodeOfOneCell
 	 */
 	void addNewlyDividedCells(thrust::device_vector<double> &nodeLocXNewCell,

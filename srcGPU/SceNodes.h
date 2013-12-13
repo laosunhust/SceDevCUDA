@@ -31,7 +31,7 @@
  *
  *  This simulation package is highly dependent on Thrust library, which is an official
  *  fast - GPU development toolkit released by NVIDIA research.
- *  The code requires CMake to build. When making project, html stype documentation will be
+ *  The code requires CMake to build. When making project, html style documentation will be
  *  automatically generated in "html" folder in project root directory.
  *
  *  1) The goal of the project is to simulate a developmental biology phenomenon
@@ -48,12 +48,13 @@
 typedef unsigned int uint;
 typedef thrust::tuple<double, double> CVec2;
 typedef thrust::tuple<bool, double> BoolD;
-typedef thrust::tuple<bool, uint> BoolUI;
-typedef thrust::tuple<bool, uint, double, double, uint> BoolUIDDUI;
+typedef thrust::tuple<bool, uint, double> BoolUID;
+typedef thrust::tuple<bool, uint, double, double, uint, double> BoolUIDDUID;
 typedef thrust::tuple<double, double, double> CVec3;
 typedef thrust::tuple<double, double, double, uint> CVec3Int;
 typedef thrust::tuple<double, double, double, bool, uint> CVec3BoolInt;
 typedef thrust::tuple<double, double, double, double> CVec4;
+typedef thrust::tuple<double, double, double, double, double, double> CVec6;
 typedef thrust::tuple<double, double, double, double, double, double, bool> CVec6Bool;
 typedef thrust::tuple<uint, uint> Tuint2;
 typedef thrust::tuple<uint, uint, uint> Tuint3;
@@ -64,12 +65,15 @@ typedef thrust::tuple<uint, uint, uint, double, double, double> Tuuuddd;
 //extern double sceInterParaCPU[4];
 //extern double sceIntraParaCPU[4];
 
+/**
+ * Depreciated.
+ */
 struct InitFunctor: public thrust::unary_function<Tuint3, Tuint3> {
 	uint maxCellCount;
 	__host__ __device__ InitFunctor(uint maxCell) :
 			maxCellCount(maxCell) {
 	}
-	__host__   __device__ Tuint3 operator()(const Tuint3 &v) {
+	__host__         __device__ Tuint3 operator()(const Tuint3 &v) {
 		uint iter = thrust::get < 2 > (v);
 		uint cellRank = iter / maxCellCount;
 		uint nodeRank = iter % maxCellCount;
@@ -77,13 +81,16 @@ struct InitFunctor: public thrust::unary_function<Tuint3, Tuint3> {
 	}
 };
 
+/**
+ * functor to add two three dimensional vectors.
+ */
 struct AddFunctor: public thrust::binary_function<CVec3, CVec3, CVec3> {
 	double _dt;
 	__host__ __device__ AddFunctor(double dt) :
 			_dt(dt) {
 	}
 
-	__host__    __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
+	__host__   __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
 		double xMoveDist = thrust::get < 0 > (vel) * _dt;
 		double yMoveDist = thrust::get < 1 > (vel) * _dt;
 		double zMoveDist = thrust::get < 2 > (vel) * _dt;
@@ -94,6 +101,9 @@ struct AddFunctor: public thrust::binary_function<CVec3, CVec3, CVec3> {
 	}
 };
 
+/**
+ * random number generation engine.
+ */
 struct Prg {
 	double a, b;
 
@@ -109,6 +119,10 @@ struct Prg {
 	}
 };
 
+/**
+ * map a node coordinate to its bucket index.
+ *
+ */
 struct pointToBucketIndex2D: public thrust::unary_function<CVec3BoolInt, Tuint2> {
 	double _minX;
 	double _maxX;
@@ -141,6 +155,14 @@ struct pointToBucketIndex2D: public thrust::unary_function<CVec3BoolInt, Tuint2>
 	}
 };
 
+/**
+ * Functor to compute neighbor buckets(center bucket included) of a node.
+ * @param input1 bucket index of node
+ * @param input2 pick from the sequence, which is also global rank of the node
+ *
+ * @return output1 bucket indices of node ( all neighbors and the center bucket) of node
+ * @return output2 global rank of node
+ */
 struct NeighborFunctor2D: public thrust::unary_function<Tuint2, Tuint2> {
 	uint _numOfBucketsInXDim;
 	uint _numOfBucketsInYDim;
@@ -149,7 +171,7 @@ struct NeighborFunctor2D: public thrust::unary_function<Tuint2, Tuint2> {
 			_numOfBucketsInXDim(numOfBucketsInXDim), _numOfBucketsInYDim(
 					numOfBucketsInYDim) {
 	}
-	__host__   __device__ Tuint2 operator()(const Tuint2 &v) {
+	__host__      __device__ Tuint2 operator()(const Tuint2 &v) {
 		uint relativeRank = thrust::get < 1 > (v) % 9;
 		uint xPos = thrust::get < 0 > (v) % _numOfBucketsInXDim;
 		uint yPos = thrust::get < 0 > (v) / _numOfBucketsInXDim;
@@ -220,6 +242,9 @@ struct NeighborFunctor2D: public thrust::unary_function<Tuint2, Tuint2> {
 	}
 };
 
+/**
+ * functor to check if both inputs are non-zero.
+ */
 struct bothNoneZero {
 	__host__ __device__
 	bool operator()(Tuint2 v) {
@@ -230,6 +255,10 @@ struct bothNoneZero {
 		}
 	}
 };
+
+/**
+ * functor to check if first two of the three inputs are non-zero.
+ */
 struct bothNoneZero2 {
 	__host__ __device__
 	bool operator()(Tuint3 v) {
@@ -240,6 +269,10 @@ struct bothNoneZero2 {
 		}
 	}
 };
+
+/**
+ * functor to check if an integer is one.
+ */
 struct isOne {
 	__host__ __device__
 	bool operator()(int i) {
@@ -276,6 +309,10 @@ __device__ bool bothNodesCellNode(uint nodeGlobalRank1, uint nodeGlobalRank2,
 __device__ bool isSameCell(uint nodeGlobalRank1, uint nodeGlobalRank2,
 		uint nodeCountPerCell);
 
+/**
+ * a complicated data structure for adding subcellular element force to cell nodes.
+ * This data structure is designed in an unconventional way because of performance considerations.
+ */
 struct AddSceForce: public thrust::unary_function<Tuuuddd, CVec3> {
 	uint* _extendedValuesAddress;
 	double* _nodeLocXAddress;
@@ -339,9 +376,10 @@ struct AddSceForce: public thrust::unary_function<Tuuuddd, CVec3> {
 };
 
 /**
+ * Data structure for calculating nearby node interaction.
  * To maximize GPU performance, I choose to implement Structure of Arrays(SOA)
  * instead of Array Of Structure, which is commonly used in serial algorithms.
- * This data structure is a little bit counter-uintuitive, but would expect to
+ * This data structure is a little bit counter-intuitive, but would expect to
  * give 2X - 3X performance gain.
  * To gain a better performance on GPU, we pre-allocate memory for everything that
  * will potentially
@@ -353,6 +391,8 @@ struct AddSceForce: public thrust::unary_function<Tuuuddd, CVec3> {
  */
 class SceNodes {
 public:
+	SceNodes() {
+	}
 	SceNodes(uint maxTotalCellCount, uint maxNodeInCell);
 	SceNodes(uint maxTotalCellCount, uint maxNodeInCell, uint maxTotalECMCount,
 			uint maxNodeInECM);
@@ -415,7 +455,7 @@ public:
 	 */
 	void buildBuckets2D(double minX, double maxX, double minY, double maxY,
 			double bucketSize);
-	/*
+	/**
 	 * this method extends the previously obtained vector of keys and values to a map
 	 * that each point will map to all bucket IDs that are near the specific point.
 	 */

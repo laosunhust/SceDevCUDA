@@ -412,7 +412,17 @@ void SceNodes::extendBuckets2D(uint numOfBucketsInXDim,
 	uint valuesCount = bucketValues.size();
 	bucketKeysExpanded.resize(valuesCount * extensionFactor2D);
 	bucketValuesIncludingNeighbor.resize(valuesCount * extensionFactor2D);
+
+	/**
+	 * beginning of constant iterator
+	 */
 	thrust::constant_iterator<uint> first(extensionFactor2D);
+	/**
+	 * end of constant iterator.
+	 * the plus sign only indicate movement of position, not value.
+	 * e.g. movement is 5 and first iterator is initialized as 9
+	 * result array is [9,9,9,9,9];
+	 */
 	thrust::constant_iterator<uint> last = first + valuesCount;
 
 	expand(first, last,

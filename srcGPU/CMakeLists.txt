@@ -3,8 +3,12 @@ include_directories(${COMMON_INCLUDES})
 CUDA_ADD_LIBRARY(SceGPU
         ${CPU_SOURCE_DIR}/ConfigParser.h
 	${CPU_SOURCE_DIR}/ConfigParser.cpp
+	GrowthDistriMap.h
+	GrowthDistriMap.cu
 	SceNodes.h
 	SceNodes.cu
 	SceCells.h
 	SceCells.cu
+	SimulationDomainGPU.h
+	SimulationDomainGPU.cu
 )

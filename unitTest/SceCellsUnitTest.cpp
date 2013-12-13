@@ -228,5 +228,4 @@ TEST(GrowthTest, fixedTest) {
 				errTol);
 		//EXPECT_EQ(expectedIsScheduleToGrow[i],isGoingToAddFromGPU[i]);
 	}
-
 }

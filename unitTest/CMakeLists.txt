@@ -20,4 +20,3 @@ if(NOT WIN32)
 endif()
 
 add_test(unitTest ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${PROJECT_TEST_NAME})
-

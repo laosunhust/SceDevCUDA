@@ -33,8 +33,7 @@ public:
 	vector<int> generateAuxArray();
 	int getTotalNodeCount();
 	virtual ~SimulationDomain();
-}
-;
+};
 
 } /* namespace BeakSce */
 

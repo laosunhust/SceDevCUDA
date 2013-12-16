@@ -65,13 +65,13 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell) {
 	//cellRanks.resize(maxTotalNodeCount);
 	//nodeRanks.resize(maxTotalNodeCount);
 	uint maxTotalNodeCount = maxTotalCellNodeCount + maxTotalECMNodeCount;
-	nodeIsActive.resize(maxTotalNodeCount);
-	nodeLocX.resize(maxTotalNodeCount);
-	nodeLocY.resize(maxTotalNodeCount);
-	nodeLocZ.resize(maxTotalNodeCount);
-	nodeVelX.resize(maxTotalNodeCount);
-	nodeVelY.resize(maxTotalNodeCount);
-	nodeVelZ.resize(maxTotalNodeCount);
+	nodeIsActive.resize(maxTotalNodeCount, 0);
+	nodeLocX.resize(maxTotalNodeCount, 0.0);
+	nodeLocY.resize(maxTotalNodeCount, 0.0);
+	nodeLocZ.resize(maxTotalNodeCount, 0.0);
+	nodeVelX.resize(maxTotalNodeCount, 0.0);
+	nodeVelY.resize(maxTotalNodeCount, 0.0);
+	nodeVelZ.resize(maxTotalNodeCount, 0.0);
 	//thrust::counting_iterator<uint> countingBegin(0);
 	//thrust::counting_iterator<uint> countingEnd(maxTotalNodeCount);
 
@@ -354,10 +354,16 @@ void calculateAndAddInterForce(double &xPos, double &yPos, double &zPos,
 				* exp(-linkLength / sceInterPara[2])
 				+ sceInterPara[1] / sceInterPara[3]
 						* exp(-linkLength / sceInterPara[3]);
+		if (forceValue > 0) {
+			forceValue = 0;
+		}
 	}
-	xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
-	yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
-	zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
+	if (linkLength > 1.0e-12) {
+		xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
+		yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
+		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
+	}
+
 }
 
 __device__
@@ -369,9 +375,12 @@ void calculateAndAddIntraForce(double &xPos, double &yPos, double &zPos,
 			* exp(-linkLength / sceIntraPara[2])
 			+ sceIntraPara[1] / sceIntraPara[3]
 					* exp(-linkLength / sceIntraPara[3]);
-	xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
-	yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
-	zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
+	if (linkLength > 1.0e-12) {
+		xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
+		yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
+		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
+	}
+
 //xRes = xRes + (xPos2 - xPos);
 //yRes = yRes + (yPos2 - yPos);
 //zRes = zRes + (zPos2 - zPos);
@@ -492,6 +501,15 @@ void SceNodes::applySceForces(uint numOfBucketsInXDim,
 //	std::cout << "bucket key: " << bucketKeysFromGPU[i] << std::endl;
 //}
 
+	thrust::host_vector<double> xTmpVel = nodeVelX;
+	for (uint i = 0; i < xTmpVel.size(); i++) {
+		if (isnan(xTmpVel[i])) {
+			std::cout << "Velocity nan detected before apply sceForces"
+					<< std::endl;
+			exit(0);
+		}
+	}
+
 	double* nodeLocXAddress = thrust::raw_pointer_cast(&nodeLocX[0]);
 	double* nodeLocYAddress = thrust::raw_pointer_cast(&nodeLocY[0]);
 	double* nodeLocZAddress = thrust::raw_pointer_cast(&nodeLocZ[0]);
@@ -531,14 +549,32 @@ void SceNodes::applySceForces(uint numOfBucketsInXDim,
 			AddSceForce(valueAddress, nodeLocXAddress, nodeLocYAddress,
 					nodeLocZAddress, maxTotalCellNodeCount, maxNodeOfOneCell,
 					maxNodePerECM));
+	xTmpVel = nodeVelX;
+	for (uint i = 0; i < xTmpVel.size(); i++) {
+		if (isnan(xTmpVel[i])) {
+			std::cout << "Velocity nan detected after apply sceForces"
+					<< std::endl;
+			std::cout << "cell rank :" << i / maxNodeOfOneCell << std::endl;
+			thrust::host_vector<double> tempX = nodeLocX;
+			for (uint j = 0; j < tempX.size(); j++) {
+				if (isnan(tempX[j])) {
+					std::cout << "unexpected loc nan" << std::endl;
+				}
+			}
+			exit(0);
+		}
+	}
 }
 
 void SceNodes::calculateAndApplySceForces(double minX, double maxX, double minY,
 		double maxY, double bucketSize) {
 	const int numberOfBucketsInXDim = (maxX - minX) / bucketSize + 1;
 	const int numberOfBucketsInYDim = (maxY - minY) / bucketSize + 1;
+	std::cout << "in SceNodes, before build buckets 2D:" << std::endl;
 	buildBuckets2D(minX, maxX, minY, maxY, bucketSize);
+	std::cout << "in SceNodes, before extend buckets 2D:" << std::endl;
 	extendBuckets2D(numberOfBucketsInXDim, numberOfBucketsInYDim);
+	std::cout << "in SceNodes, before apply sce forces:" << std::endl;
 	applySceForces(numberOfBucketsInXDim, numberOfBucketsInYDim);
 }
 /*

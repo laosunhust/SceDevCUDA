@@ -16,7 +16,7 @@ struct DivideFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ DivideFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__                      __device__ uint operator()(const uint &num) {
+	__host__ __device__ uint operator()(const uint &num) {
 		return num / dividend;
 	}
 };
@@ -32,7 +32,7 @@ struct ModuloFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ ModuloFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__                          __device__ uint operator()(const uint &num) {
+	__host__                                __device__ uint operator()(const uint &num) {
 		return num % dividend;
 	}
 };
@@ -58,7 +58,7 @@ struct isTrue {
  * @return output result of addition
  */
 struct CVec3Add: public thrust::binary_function<CVec3, CVec3, CVec3> {
-	__host__                           __device__ CVec3 operator()(const CVec3 &vec1, const CVec3 &vec2) {
+	__host__      __device__ CVec3 operator()(const CVec3 &vec1, const CVec3 &vec2) {
 		return thrust::make_tuple(
 				thrust::get < 0 > (vec1) + thrust::get < 0 > (vec2),
 				thrust::get < 1 > (vec1) + thrust::get < 1 > (vec2),
@@ -76,7 +76,7 @@ struct CVec3Add: public thrust::binary_function<CVec3, CVec3, CVec3> {
  *        output3 third division result \n
  */
 struct CVec3Divide: public thrust::binary_function<CVec3, double, CVec3> {
-	__host__                            __device__ CVec3 operator()(const CVec3 &vec1,
+	__host__      __device__ CVec3 operator()(const CVec3 &vec1,
 			const double &divisor) {
 		return thrust::make_tuple(thrust::get < 0 > (vec1) / divisor,
 				thrust::get < 1 > (vec1) / divisor,
@@ -115,7 +115,7 @@ struct LoadGridDataToNode: public thrust::unary_function<CVec2, CVec3> {
 					gridSpacing), _gridMagValue(gridMagValue), _gridDirXCompValue(
 					gridDirXCompValue), _gridDirYCompValue(gridDirYCompValue) {
 	}
-	__host__                           __device__ CVec3 operator()(const CVec2 &d2) const {
+	__host__ __device__ CVec3 operator()(const CVec2 &d2) const {
 		double xCoord = thrust::get < 0 > (d2);
 		double yCoord = thrust::get < 1 > (d2);
 		uint gridLoc = (uint) (xCoord / _gridSpacing)
@@ -179,7 +179,7 @@ struct SaxpyFunctorDim2: public thrust::binary_function<CVec2, CVec2, CVec2> {
 	__host__ __device__ SaxpyFunctorDim2(double dt) :
 			_dt(dt) {
 	}
-	__host__       __device__ CVec2 operator()(const CVec2 &vec1, const CVec2 &vec2) {
+	__host__ __device__ CVec2 operator()(const CVec2 &vec1, const CVec2 &vec2) {
 		double xRes = thrust::get < 0 > (vec1) * _dt + thrust::get < 0 > (vec2);
 		double yRes = thrust::get < 1 > (vec1) * _dt + thrust::get < 1 > (vec2);
 		return thrust::make_tuple(xRes, yRes);
@@ -270,7 +270,7 @@ struct AddPtOp: thrust::unary_function<BoolUIDDUID, BoolUID> {
 					nodeYPosAddress), m_seed(seed), _growThreshold(
 					growThreshold) {
 	}
-	__host__   __device__ BoolUID operator()(const BoolUIDDUID &biddi) {
+	__host__ __device__ BoolUID operator()(const BoolUIDDUID &biddi) {
 		const double pI = acos(-1.0);
 		bool isScheduledToGrow = thrust::get < 0 > (biddi);
 		uint activeNodeCountOfThisCell = thrust::get < 1 > (biddi);
@@ -408,7 +408,7 @@ struct ApplyStretchForce: thrust::unary_function<CVec6, CVec2> {
 	__host__ __device__ ApplyStretchForce(double elongationCoefficient) :
 			_elongationCoefficient(elongationCoefficient) {
 	}
-	__host__     __device__ CVec2 operator()(const CVec6 &vec6) {
+	__host__ __device__ CVec2 operator()(const CVec6 &vec6) {
 		double distToCenterAlongGrowDir = thrust::get < 0 > (vec6);
 		// minimum distance of node to its corresponding center along growth direction
 		double lengthDifference = thrust::get < 1 > (vec6);
@@ -437,7 +437,7 @@ struct LeftShiftFunctor: thrust::unary_function<uint, uint> {
 	__host__ __device__ LeftShiftFunctor(uint maxNodeOfOneCell) :
 			_shiftLeftOffset(maxNodeOfOneCell / 2) {
 	}
-	__host__     __device__ uint operator()(const uint &position) {
+	__host__ __device__ uint operator()(const uint &position) {
 		uint result;
 		if (position < _shiftLeftOffset) {
 			// could be 0, because these region will actually never be used
@@ -507,7 +507,7 @@ struct CompuPos: thrust::unary_function<Tuint2, uint> {
 	__host__ __device__ CompuPos(uint maxNodeOfOneCell) :
 			_maxNodeCountPerCell(maxNodeOfOneCell) {
 	}
-	__host__             __device__ uint operator()(const Tuint2 &vec) {
+	__host__ __device__ uint operator()(const Tuint2 &vec) {
 		uint rankInCell = thrust::get < 0 > (vec) % _maxNodeCountPerCell;
 		uint cellRank = thrust::get < 1 > (vec);
 		return (cellRank * _maxNodeCountPerCell + rankInCell);
@@ -524,18 +524,22 @@ struct CompuPos: thrust::unary_function<Tuint2, uint> {
  * thrid input: growth progress. should be 0.0 to 1.0. \n
  * @return isGoingToDivide result that indicates whether a cell is ready to divide.
  */
-struct CompuIsDivide: thrust::unary_function<CVec3, bool> {
+struct CompuIsDivide: thrust::unary_function<CVec3Int, bool> {
 	uint _isDivideCriticalRatio;
-	__host__ __device__ CompuIsDivide(double isDivideCriticalRatio) :
-			_isDivideCriticalRatio(isDivideCriticalRatio) {
+	uint _maxNodePerCell;
+	__host__ __device__ CompuIsDivide(double isDivideCriticalRatio,
+			uint maxNodePerCell) :
+			_isDivideCriticalRatio(isDivideCriticalRatio), _maxNodePerCell(
+					maxNodePerCell) {
 	}
-	__host__ __device__ uint operator()(const CVec3 &vec) {
+	__host__ __device__ uint operator()(const CVec3Int &vec) {
 		double lengthDifference = thrust::get < 0 > (vec);
 		double expectedLength = thrust::get < 1 > (vec);
 		double currentLength = expectedLength - lengthDifference;
 		double growthProgress = thrust::get < 2 > (vec);
+		int nodeCount = thrust::get < 3 > (vec);
 		if (currentLength / expectedLength > _isDivideCriticalRatio
-				&& growthProgress >= 1.0) {
+				&& growthProgress >= 1.0 && nodeCount == _maxNodePerCell) {
 			return true;
 		} else {
 			return false;
@@ -609,9 +613,9 @@ public:
 
 	// these tmp coordinates will be temporary storage for division info
 	// their size will be the same with maximum node count.
-	thrust::device_vector<double> xCoordTmp;
-	thrust::device_vector<double> yCoordTmp;
-	thrust::device_vector<double> zCoordTmp;
+	//thrust::device_vector<double> xCoordTmp;
+	//thrust::device_vector<double> yCoordTmp;
+	//thrust::device_vector<double> zCoordTmp;
 
 	// some memory for holding intermediate values instead of dynamically allocating.
 	thrust::device_vector<uint> cellRanks;

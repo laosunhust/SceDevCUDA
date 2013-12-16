@@ -48,9 +48,9 @@ SceCells::SceCells(SceNodes* nodesInput) {
 	growthXDir.resize(maxCellCount);
 	growthYDir.resize(maxCellCount);
 
-	xCoordTmp.resize(maxTotalCellNodeCount);
-	yCoordTmp.resize(maxTotalCellNodeCount);
-	zCoordTmp.resize(maxTotalCellNodeCount);
+	//xCoordTmp.resize(maxTotalCellNodeCount);
+	//yCoordTmp.resize(maxTotalCellNodeCount);
+	//zCoordTmp.resize(maxTotalCellNodeCount);
 	cellRanks.resize(maxTotalCellNodeCount);
 	activeXPoss.resize(maxTotalCellNodeCount);
 	activeYPoss.resize(maxTotalCellNodeCount);
@@ -175,6 +175,24 @@ void SceCells::grow2DSimplified(double dt,
 		uint GridDimensionX, uint GridDimensionY, double GridSpacing) {
 	//first step: assign the growth magnitude and direction info that was calculated outside
 	//to internal values
+
+	/*
+	thrust::host_vector<double> xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before first step in grow" << std::endl;
+			exit(0);
+		}
+	}
+	thrust::host_vector<double> xTmpVel = nodes->nodeVelX;
+	for (uint i = 0; i < xTmpVel.size(); i++) {
+		if (isnan(xTmpVel[i])) {
+			std::cout << "Velocity nan detected before first step in grow"
+					<< std::endl;
+			exit(0);
+		}
+	}
+    */
 	thrust::counting_iterator<uint> countingBegin(0);
 	double* growthFactorMagAddress = thrust::raw_pointer_cast(
 			&growthFactorMag[0]);
@@ -195,11 +213,31 @@ void SceCells::grow2DSimplified(double dt,
 			LoadGridDataToNode(GridDimensionX, GridDimensionY, GridSpacing,
 					growthFactorMagAddress, growthFactorDirXAddress,
 					growthFactorDirYAddress));
+
+	/*
+	xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before second step in grow" << std::endl;
+			exit(0);
+		}
+	}
+	*/
+
 	//second step: use the growth magnitude and dt to update growthProgress
 	thrust::transform(growthSpeed.begin(),
 			growthSpeed.begin() + currentActiveCellCount,
 			growthProgress.begin(), growthProgress.begin(),
 			SaxpyFunctorWithMaxOfOne(dt));
+	/*
+	xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before thrid step in grow" << std::endl;
+			exit(0);
+		}
+	}
+	*/
 	//third step: use lastCheckPoint and growthProgress to decide whether add point or not
 	thrust::transform(
 			thrust::make_zip_iterator(
@@ -209,12 +247,30 @@ void SceCells::grow2DSimplified(double dt,
 					thrust::make_tuple(growthProgress.begin(),
 							lastCheckPoint.begin())) + currentActiveCellCount,
 			isScheduledToGrow.begin(), PtCondiOp(growThreshold));
+	/*
+	xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before fourth step in grow" << std::endl;
+			exit(0);
+		}
+	}
+	*/
 	// fourth step: use growthProgress and growthXDir&growthYDir to compute
 	// expected length along the growth direction.
 	thrust::transform(growthProgress.begin(),
 			growthProgress.begin() + currentActiveCellCount,
 			expectedLength.begin(),
 			CompuTarLen(cellInitLength, cellFinalLength));
+	/*
+	xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before fifth step in grow" << std::endl;
+			exit(0);
+		}
+	}
+	*/
 	// fifth step:  reducing the smallest value and biggest value
 	// a cell's node to its center point
 	uint totalNodeCountForActiveCells = currentActiveCellCount
@@ -275,6 +331,15 @@ void SceCells::grow2DSimplified(double dt,
 			distToCenterAlongGrowDir.begin(), cellRanksTmpStorage.begin(),
 			biggestDistance.begin(), thrust::equal_to<uint>(),
 			thrust::maximum<double>());
+	/*
+	xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before sixth step in grow" << std::endl;
+			exit(0);
+		}
+	}
+	*/
 	// sixth step: compute the current length and then
 	// compute its difference with expected length
 	thrust::transform(
@@ -286,6 +351,24 @@ void SceCells::grow2DSimplified(double dt,
 							smallestDistance.begin(), biggestDistance.begin()))
 					+ currentActiveCellCount, lengthDifference.begin(),
 			CompuDiff());
+	/*
+	xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before seventh step in grow"
+					<< std::endl;
+			exit(0);
+		}
+	}
+	xTmpVel = nodes->nodeVelX;
+	for (uint i = 0; i < xTmpVel.size(); i++) {
+		if (isnan(xTmpVel[i])) {
+			std::cout << "Velocity nan detected before seventh step in grow"
+					<< std::endl;
+			exit(0);
+		}
+	}
+	*/
 	// seventh step: use the difference that just computed and growthXDir&growthYDir
 	// to apply stretching force (velocity) on nodes of all cells
 	thrust::transform(
@@ -318,7 +401,23 @@ void SceCells::grow2DSimplified(double dt,
 					thrust::make_tuple(nodes->nodeVelX.begin(),
 							nodes->nodeVelY.begin())),
 			ApplyStretchForce(elongationCoefficient));
-
+	/*
+	xTmpVel = nodes->nodeVelX;
+	for (uint i = 0; i < xTmpVel.size(); i++) {
+		if (isnan(xTmpVel[i])) {
+			std::cout << "Velocity nan detected before eigth step in grow"
+					<< std::endl;
+			exit(0);
+		}
+	}
+	xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before eigth step in grow" << std::endl;
+			exit(0);
+		}
+	}
+	*/
 	// eighth step: move the cell nodes according to velocity, if the node is active
 	thrust::transform_if(
 			thrust::make_zip_iterator(
@@ -336,7 +435,15 @@ void SceCells::grow2DSimplified(double dt,
 					thrust::make_tuple(nodes->nodeLocX.begin(),
 							nodes->nodeLocY.begin())), SaxpyFunctorDim2(dt),
 			isTrue());
-
+	/*
+	xTmp = nodes->nodeLocX;
+	for (uint i = 0; i < xTmp.size(); i++) {
+		if (isnan(xTmp[i])) {
+			std::cout << "nan detected before ninth step in grow" << std::endl;
+			exit(0);
+		}
+	}
+	*/
 	// ninth step: also add a point if scheduled to grow.
 	// This step does not guarantee success ; If adding new point failed, it will not change
 	// isScheduleToGrow and activeNodeCount;
@@ -394,25 +501,35 @@ void SceCells::grow2DSimplified(double dt,
  * step 7. copy temp1 to the previous position of the cell array.
  *
  * step 8. add activeCellCount of the system.
+ *
+ * step 9. mark isDivide of all cells to false.
  */
+
+//TODO: also pay attention to number of active nodes per cell. This seems to be omitted.
 void SceCells::divide2DSimplified() {
-	//TODO: step 1
+	// step 1
 	thrust::transform(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(lengthDifference.begin(),
-							expectedLength.begin(), growthProgress.begin())),
+							expectedLength.begin(), growthProgress.begin(),
+							activeNodeCountOfThisCell.begin())),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(lengthDifference.begin(),
-							expectedLength.begin(), growthProgress.begin()))
+							expectedLength.begin(), growthProgress.begin(),
+							activeNodeCountOfThisCell.begin()))
 					+ currentActiveCellCount, isDivided.begin(),
-			CompuIsDivide(isDivideCriticalRatio));
+			CompuIsDivide(isDivideCriticalRatio, maxNodeOfOneCell));
 
 	// step 2 : copy all cell rank and distance to its corresponding center with divide flag = 1
 	uint totalNodeCountForActiveCells = currentActiveCellCount
 			* maxNodeOfOneCell;
+	// sum all bool values which indicate whether the cell is going to divide.
+	// toBeDivideCount is the total number of cells going to divide.
 	uint toBeDivideCount = thrust::reduce(isDivided.begin(),
-			isDivided.begin() + currentActiveCellCount);
-	uint nodeStorageCount = currentActiveCellCount * maxNodeOfOneCell;
+			isDivided.begin() + currentActiveCellCount, (uint) (0));
+	std::cout << "total number of cells to divide: " << toBeDivideCount
+			<< std::endl;
+	uint nodeStorageCount = toBeDivideCount * maxNodeOfOneCell;
 	thrust::device_vector<bool> tmpIsActiveHold1(nodeStorageCount, true);
 	thrust::device_vector<double> tmpDistToCenter1(nodeStorageCount, 0.0);
 	thrust::device_vector<uint> tmpCellRankHold1(nodeStorageCount, 0.0);
@@ -428,7 +545,7 @@ void SceCells::divide2DSimplified() {
 
 	thrust::counting_iterator<uint> countingBegin(0);
 
-	// step 2
+	// step 2 , continued
 	thrust::copy_if(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(
@@ -454,6 +571,37 @@ void SceCells::divide2DSimplified() {
 							tmpYValueHold1.begin(), tmpZValueHold1.begin())),
 			isTrue());
 
+	/*
+	if (toBeDivideCount != 0) {
+		thrust::host_vector<double> hostTmpDist = tmpDistToCenter1;
+		thrust::host_vector<double> hostXCoord = tmpXValueHold1;
+		thrust::host_vector<double> hostYCoord = tmpYValueHold1;
+		thrust::host_vector<double> hostZCoord = tmpZValueHold1;
+		std::cout << "In the begining, numbers:" << std::endl;
+		for (uint i = 0; i < nodeStorageCount; i++) {
+			std::cout << "(" << hostTmpDist[i] << ",,(" << hostXCoord[i] << ","
+					<< hostYCoord[i] << "," << hostZCoord[i] << ")) # "
+					<< std::endl;
+		}
+		//int jj;
+		//std::cin >> jj;
+	}
+	*/
+
+	/*
+	 if (toBeDivideCount != 0) {
+	 thrust::host_vector<double> hostTmpDist = tmpDistToCenter1;
+	 thrust::host_vector<double> hostXCoord = tmpXValueHold1;
+	 thrust::host_vector<double> hostYCoord = tmpYValueHold1;
+	 thrust::host_vector<double> hostZCoord = tmpZValueHold1;
+	 std::cout << "before sorting, numbers:" << std::endl;
+	 for (uint i = 0; i < nodeStorageCount; i++) {
+	 std::cout << "(" << hostTmpDist[i] << ",,(" << hostXCoord[i] << ","
+	 << hostYCoord[i] << "," << hostZCoord[i] << ")) # "
+	 << std::endl;
+	 }
+	 }
+	 */
 	//step 3
 	for (uint i = 0; i < toBeDivideCount; i++) {
 		thrust::sort_by_key(tmpDistToCenter1.begin() + i * maxNodeOfOneCell,
@@ -465,16 +613,29 @@ void SceCells::divide2DSimplified() {
 								tmpZValueHold1.begin()
 										+ i * maxNodeOfOneCell)));
 	}
+	/*
+	 if (toBeDivideCount != 0) {
+	 thrust::host_vector<double> hostTmpDist = tmpDistToCenter1;
+	 thrust::host_vector<double> hostXCoord = tmpXValueHold1;
+	 thrust::host_vector<double> hostYCoord = tmpYValueHold1;
+	 thrust::host_vector<double> hostZCoord = tmpZValueHold1;
+	 std::cout << "after sorting, numbers:" << std::endl;
+	 for (uint i = 0; i < nodeStorageCount; i++) {
+	 std::cout << "(" << hostTmpDist[i] << ",,(" << hostXCoord[i] << ","
+	 << hostYCoord[i] << "," << hostZCoord[i] << ")) # "
+	 << std::endl;
+	 }
 
-	// step 4.
+	 }
+	 */
+	//step 4.
 	thrust::scatter_if(
 			thrust::make_zip_iterator(
-					thrust::make_tuple(tmpXValueHold2.begin(),
-							tmpYValueHold2.begin(), tmpZValueHold2.begin())),
+					thrust::make_tuple(tmpXValueHold1.begin(),
+							tmpYValueHold1.begin(), tmpZValueHold1.begin())),
 			thrust::make_zip_iterator(
-					thrust::make_tuple(tmpXValueHold2.begin(),
-							tmpYValueHold2.begin(), tmpZValueHold2.begin()))
-					+ nodeStorageCount,
+					thrust::make_tuple(tmpXValueHold1.end(),
+							tmpYValueHold1.end(), tmpZValueHold1.end())),
 			make_transform_iterator(countingBegin,
 					LeftShiftFunctor(maxNodeOfOneCell)),
 			make_transform_iterator(countingBegin,
@@ -482,20 +643,80 @@ void SceCells::divide2DSimplified() {
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpXValueHold2.begin(),
 							tmpYValueHold2.begin(), tmpZValueHold2.begin())));
+	/*
+	 if (toBeDivideCount != 0) {
+	 thrust::host_vector<double> hostTmpDist = tmpDistToCenter1;
+	 thrust::host_vector<double> hostXCoord = tmpXValueHold1;
+	 thrust::host_vector<double> hostYCoord = tmpYValueHold1;
+	 thrust::host_vector<double> hostZCoord = tmpZValueHold1;
+	 std::cout << "after step 4, numbers:" << std::endl;
+	 for (uint i = 0; i < nodeStorageCount; i++) {
+	 std::cout << "(" << hostTmpDist[i] << ",,(" << hostXCoord[i] << ","
+	 << hostYCoord[i] << "," << hostZCoord[i] << ")) # "
+	 << std::endl;
+	 }
 
+	 }
+	 if (toBeDivideCount == 2) {
+	 exit(0);
+	 }
+	 */
 	//step 5.
-	thrust::transform(tmpIsActiveHold1.begin(),
-			tmpIsActiveHold1.begin() + nodeStorageCount,
+	/*
+	 if (toBeDivideCount != 0) {
+	 thrust::host_vector<bool> isActive1Host = tmpIsActiveHold1;
+	 thrust::host_vector<bool> isActive2Host = tmpIsActiveHold2;
+	 std::cout << "before transform, active state 1:" << std::endl;
+	 std::cout << "(";
+	 for (uint i = 0; i < nodeStorageCount; i++) {
+	 std::cout << isActive1Host[i] << ", ";
+	 }
+	 std::cout << ")" << std::endl;
+	 std::cout << "before transform, active state 2:" << std::endl;
+	 std::cout << "(";
+	 for (uint i = 0; i < nodeStorageCount; i++) {
+	 std::cout << isActive1Host[2] << ", ";
+	 }
+	 std::cout << ")" << std::endl;
+	 }
+	 */
+	thrust::transform(countingBegin, countingBegin + nodeStorageCount,
 			tmpIsActiveHold1.begin(), IsLeftSide(maxNodeOfOneCell));
-	thrust::transform(tmpIsActiveHold2.begin(),
-			tmpIsActiveHold2.begin() + nodeStorageCount,
+	thrust::transform(countingBegin, countingBegin + nodeStorageCount,
 			tmpIsActiveHold2.begin(), IsLeftSide(maxNodeOfOneCell));
 
+	/*
+	 if (toBeDivideCount != 0) {
+	 thrust::host_vector<bool> isActive1Host = tmpIsActiveHold1;
+	 thrust::host_vector<bool> isActive2Host = tmpIsActiveHold2;
+	 std::cout << "after transform, active state 1:" << std::endl;
+	 std::cout << "(";
+	 for (uint i = 0; i < nodeStorageCount; i++) {
+	 std::cout << isActive2Host[i] << ", ";
+	 }
+	 std::cout << ")" << std::endl;
+	 std::cout << "after transform, active state 2:" << std::endl;
+	 std::cout << "(";
+	 for (uint i = 0; i < nodeStorageCount; i++) {
+	 std::cout << isActive2Host[i] << ", ";
+	 }
+	 std::cout << ")" << std::endl;
+	 }
+	 */
+	if (toBeDivideCount != 0) {
+		std::cout << "before insert, active cell count in nodes:"
+				<< nodes->getCurrentActiveCellCount() << std::endl;
+	}
 	/// step 6. call SceNodes function to add newly divided cells
 	nodes->addNewlyDividedCells(tmpXValueHold2, tmpYValueHold2, tmpZValueHold2,
 			tmpIsActiveHold2);
 
+	//if (toBeDivideCount != 0) {
+	//	std::cout << "after insert, active cell count in nodes:"
+	//			<< nodes->getCurrentActiveCellCount() << std::endl;
+	//}
 	//step 7
+
 	thrust::scatter(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpIsActiveHold1.begin(),
@@ -514,10 +735,26 @@ void SceCells::divide2DSimplified() {
 					thrust::make_tuple(nodes->nodeIsActive.begin(),
 							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
 							nodes->nodeLocZ.begin())));
+	thrust::constant_iterator<uint> initCellCount(maxNodeOfOneCell / 2);
+	thrust::constant_iterator<double> initGrowthProgress(0.0);
+	thrust::scatter(initCellCount, initCellCount + toBeDivideCount,
+			tmpCellRankHold1.begin(), activeNodeCountOfThisCell.begin());
+
+	thrust::scatter(initGrowthProgress, initGrowthProgress + toBeDivideCount,
+			tmpCellRankHold1.begin(), growthProgress.begin());
+	thrust::scatter(initGrowthProgress, initGrowthProgress + toBeDivideCount,
+			tmpCellRankHold1.begin(), lastCheckPoint.begin());
+
+	thrust::fill(activeNodeCountOfThisCell.begin() + currentActiveCellCount,
+			activeNodeCountOfThisCell.begin() + currentActiveCellCount
+					+ toBeDivideCount, maxNodeOfOneCell / 2);
 
 	//step 8
 	currentActiveCellCount = currentActiveCellCount + toBeDivideCount;
 	nodes->setCurrentActiveCellCount(currentActiveCellCount);
+	//step 9.
+	thrust::fill(isDivided.begin(), isDivided.begin() + currentActiveCellCount,
+			false);
 
 }
 
@@ -536,9 +773,46 @@ void SceCells::growAndDivide(double dt,
 		thrust::device_vector<double> &growthFactorDirXComp,
 		thrust::device_vector<double> &growthFactorDirYComp,
 		uint GridDimensionX, uint GridDimensionY, double GridSpacing) {
+	//thrust::host_vector<double> xTmp = nodes->nodeLocX;
+	//for (uint i = 0; i < xTmp.size(); i++) {
+	//	if (isnan(xTmp[i])) {
+	//		std::cout << "nan detected before compute center position"
+	//				<< std::endl;
+	//		exit(0);
+	//	}
+	//}
+	std::cout << "In SceCells, before compute center:" << std::endl;
 	computeCenterPos();
+	//xTmp = nodes->nodeLocX;
+	//for (uint i = 0; i < xTmp.size(); i++) {
+	//	if (isnan(xTmp[i])) {
+	//		std::cout << "nan detected before grow 2D "
+	//				<< std::endl;
+	//		exit(0);
+	//	}
+	//}
+	std::cout << "In SceCells, before grow 2D:" << std::endl;
 	grow2DSimplified(dt, growthFactorMag, growthFactorDirXComp,
 			growthFactorDirYComp, GridDimensionX, GridDimensionY, GridSpacing);
+	//xTmp = nodes->nodeLocX;
+	//for (uint i = 0; i < xTmp.size(); i++) {
+	//if (isnan(xTmp[i])) {
+	//		std::cout << "nan detected before distri info"
+	//				<< std::endl;
+	//		exit(0);
+	//	}
+	//}
+	std::cout << "In SceCells, before distribute is active info:" << std::endl;
 	distributeIsActiveInfo();
+	std::cout << "In SceCells, before divide 2D:" << std::endl;
+
+	//for (uint i = 0; i < xTmp.size(); i++) {
+	//	if (isnan(xTmp[i])) {
+	//		std::cout << "nan detected before division" << std::endl;
+	//		exit(0);
+	//	}
+	//}
 	divide2DSimplified();
+	std::cout << "In SceCells, before distribute is active info:" << std::endl;
+	distributeIsActiveInfo();
 }

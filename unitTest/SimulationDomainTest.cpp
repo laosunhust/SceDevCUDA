@@ -123,7 +123,7 @@ TEST(SingleCellGrowTest,hasGrowthTest) {
 			initCellNodePosY, centerPosX, centerPosY);
 	std::cout << "finished generate cell info" << std::endl;
 	simuDomain.initializeCells(initCellNodePosX, initCellNodePosY, centerPosX,
-			centerPosY);
+			centerPosY,0);
 	//EXPECT_NEAR(simuDomain.cells.growthProgress[0], 0.0, errTol);
 	simuDomain.runAllLogic(dt);
 	EXPECT_NEAR(simuDomain.cells.growthSpeed[0], 0.0, errTol);
@@ -169,7 +169,7 @@ TEST(SingleCellGrowTest,noGrowthTest) {
 			initCellNodePosY, centerPosX, centerPosY);
 	std::cout << "finished generate cell info" << std::endl;
 	simuDomain.initializeCells(initCellNodePosX, initCellNodePosY, centerPosX,
-			centerPosY);
+			centerPosY,0);
 
 	simuDomain.runAllLogic(dt);
 	EXPECT_NEAR(simuDomain.cells.centerCoordX[0], centerPosX[0], errTol);

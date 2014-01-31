@@ -3,7 +3,7 @@
 
 #include "SceNodes.h"
 #include "SceCells.h"
-#include "GrowthDistriMap.h"
+
 #include <sstream>
 #include <iomanip>
 #include <fstream>
@@ -17,7 +17,14 @@ class SimulationDomainGPU {
 public:
 	SceNodes nodes;
 	SceCells cells;
-	GrowthDistriMap growthMap;
+
+	GrowthDistriMap growthMap; // first map
+
+	GrowthDistriMap growthMap2; // second map
+
+	// boundary nodes share same attribute with cell nodes
+	// but nodes can't move.
+	uint cellSpaceForBdry;
 
 	double intraLinkDisplayRange;
 
@@ -32,11 +39,20 @@ public:
 	double growthGridSpacing;
 	double growthGridLowerLeftPtX;
 	double growthGridLowerLeftPtY;
+
+	// first morphogen distribution
 	double growthMorCenterXCoord;
 	double growthMorCenterYCoord;
 	double growthMorHighConcen;
 	double growthMorLowConcen;
 	double growthMorDiffSlope;
+
+	// second morphogen distribution
+	double growthMorCenterXCoordMX;
+	double growthMorCenterYCoordMX;
+	double growthMorHighConcenMX;
+	double growthMorLowConcenMX;
+	double growthMorDiffSlopeMX;
 
 	double compuDist(double x1, double y1, double z1, double x2, double y2,
 			double z2) {
@@ -48,7 +64,18 @@ public:
 	SimulationDomainGPU();
 	void initializeCells(std::vector<double> initCellNodePosX,
 			std::vector<double> initCellNodePosY,
-			std::vector<double> centerPosX, std::vector<double> centerPosY);
+			std::vector<double> centerPosX, std::vector<double> centerPosY,
+			uint cellSpaceForBdry);
+	void initialCellsOfThreeTypes(std::vector<CellType> cellTypes,
+			std::vector<uint> numOfInitNodesOfCells,
+			std::vector<double> initBdryCellNodePosX,
+			std::vector<double> initBdryCellNodePosY,
+			std::vector<double> initFNMCellNodePosX,
+			std::vector<double> initFNMCellNodePosY,
+			std::vector<double> initMXCellNodePosX,
+			std::vector<double> initMXCellNodePosY);
+
+	void initializeCellTypes(std::vector<CellType> cellTypes);
 	void runAllLogic(double dt);
 	void outputVtkFilesWithColor(std::string scriptNameBase, int rank);
 };

@@ -147,6 +147,7 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell) {
 
 SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell,
 		uint maxTotalECMCount, uint maxNodeInECM) {
+	std::cout << "start creating SceNodes object" << std::endl;
 	maxCellCount = maxTotalCellCount;
 	maxNodeOfOneCell = maxNodeInCell;
 	maxNodePerECM = maxNodeInECM;
@@ -164,14 +165,19 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell,
 
 	//cellRanks.resize(maxTotalNodeCount);
 	//nodeRanks.resize(maxTotalNodeCount);
+	std::cout << "before resizing vectors" << std::endl;
 	uint maxTotalNodeCount = maxTotalCellNodeCount + maxTotalECMNodeCount;
+	std::cout << "maxTotalNodeCount = " << maxTotalNodeCount << std::endl;
+	//thrust::host_vector<bool> nodeIsActiveHost;
 	nodeIsActive.resize(maxTotalNodeCount);
+	std::cout << "nodeIsActive resize complete" << std::endl;
 	nodeLocX.resize(maxTotalNodeCount);
 	nodeLocY.resize(maxTotalNodeCount);
 	nodeLocZ.resize(maxTotalNodeCount);
 	nodeVelX.resize(maxTotalNodeCount);
 	nodeVelY.resize(maxTotalNodeCount);
 	nodeVelZ.resize(maxTotalNodeCount);
+	std::cout << "after resizing vectors" << std::endl;
 	//thrust::counting_iterator<uint> countingBegin(0);
 	//thrust::counting_iterator<uint> countingEnd(maxTotalNodeCount);
 
@@ -186,10 +192,10 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell,
 	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
 	//						countingBegin)), InitFunctor(maxCellCount));
 
-	ConfigParser parser;
-	std::string configFileName = "sceCell.config";
+	//ConfigParser parser;
+	//std::string configFileName = "sceCell.config";
 	// globalConfigVars should be a global variable and defined in the main function.
-	globalConfigVars = parser.parseConfigFile(configFileName);
+	//globalConfigVars = parser.parseConfigFile(configFileName);
 	static const double U0 =
 			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
 					/ globalConfigVars.getConfigValue("InterCell_U0_DivFactor").toDouble();
@@ -228,8 +234,10 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell,
 	sceIntraParaCPU[2] = k1_Intra;
 	sceIntraParaCPU[3] = k2_Intra;
 
+	std::cout << "in SceNodes, before cuda memory copy to symbol:" << std::endl;
 	cudaMemcpyToSymbol(sceInterPara, sceInterParaCPU, 5 * sizeof(double));
 	cudaMemcpyToSymbol(sceIntraPara, sceIntraParaCPU, 4 * sizeof(double));
+	std::cout << "finished SceNodes:" << std::endl;
 }
 
 void SceNodes::addNewlyDividedCells(
@@ -338,7 +346,6 @@ __device__
 void calculateAndAddECMForce(double &xPos, double &yPos, double &zPos,
 		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
 		double &zRes) {
-
 }
 
 __device__
@@ -564,6 +571,7 @@ void SceNodes::applySceForces(uint numOfBucketsInXDim,
 			exit(0);
 		}
 	}
+
 }
 
 void SceNodes::calculateAndApplySceForces(double minX, double maxX, double minY,
@@ -792,7 +800,12 @@ void SceNodes::calculateAndApplySceForces(double minX, double maxX, double minY,
  }
  }
  */
+
+/**
+ * Depreciated.
+ */
 void SceNodes::move(double dt) {
+
 	thrust::transform(
 			make_zip_iterator(
 					make_tuple(nodeVelX.begin(), nodeVelY.begin(),
@@ -805,4 +818,14 @@ void SceNodes::move(double dt) {
 			make_zip_iterator(
 					make_tuple(nodeLocX.begin(), nodeLocY.begin(),
 							nodeLocZ.begin())), AddFunctor(dt));
+	std::cout << " number of boundary nodes"
+			<< currentActiveCellCount * maxNodeOfOneCell << std::endl;
+	int jj;
+	std::cin >> jj;
+	for (uint i = 0; i < currentActiveCellCount * maxNodeOfOneCell; i++) {
+		if (nodeVelX[i] != 0.0) {
+			std::cout << " error in boundary node vel, vel should be 0, actual:"
+					<< nodeVelX[i] << std::endl;
+		}
+	}
 }

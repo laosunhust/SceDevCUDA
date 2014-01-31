@@ -30,6 +30,8 @@ SceCells::SceCells(SceNodes* nodesInput) {
 	maxCellCount = nodesInput->getMaxCellCount();
 	maxTotalCellNodeCount = nodesInput->getMaxTotalCellNodeCount();
 	currentActiveCellCount = nodesInput->getCurrentActiveCellCount();
+	cellSpaceForBdry = nodesInput->getCellSpaceForBdry();
+
 	nodes = nodesInput;
 	growthProgress.resize(maxCellCount, 0.0);
 	expectedLength.resize(maxCellCount, cellInitLength);
@@ -39,6 +41,8 @@ SceCells::SceCells(SceNodes* nodesInput) {
 	activeNodeCountOfThisCell.resize(maxCellCount);
 	lastCheckPoint.resize(maxCellCount, 0.0);
 	isDivided.resize(maxCellCount);
+	//TODO: add cell type initialization
+	cellTypes.resize(maxCellCount, MX);
 	isScheduledToGrow.resize(maxCellCount, false);
 	centerCoordX.resize(maxCellCount);
 	centerCoordY.resize(maxCellCount);
@@ -145,6 +149,7 @@ void SceCells::computeCenterPos() {
  * This is a simplified method for cell growth.
  * first step: assign the growth magnitude and direction info that was calculated outside
  *     to internal values
+ *     please note that a cell should not grow if its type is boundary.
  *
  * second step: use the growth magnitude and dt to update growthProgress
  *
@@ -176,23 +181,6 @@ void SceCells::grow2DSimplified(double dt,
 	//first step: assign the growth magnitude and direction info that was calculated outside
 	//to internal values
 
-	/*
-	thrust::host_vector<double> xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before first step in grow" << std::endl;
-			exit(0);
-		}
-	}
-	thrust::host_vector<double> xTmpVel = nodes->nodeVelX;
-	for (uint i = 0; i < xTmpVel.size(); i++) {
-		if (isnan(xTmpVel[i])) {
-			std::cout << "Velocity nan detected before first step in grow"
-					<< std::endl;
-			exit(0);
-		}
-	}
-    */
 	thrust::counting_iterator<uint> countingBegin(0);
 	double* growthFactorMagAddress = thrust::raw_pointer_cast(
 			&growthFactorMag[0]);
@@ -214,15 +202,20 @@ void SceCells::grow2DSimplified(double dt,
 					growthFactorMagAddress, growthFactorDirXAddress,
 					growthFactorDirYAddress));
 
+	// if the celltype is boundary, cell should not grow at all.
+	thrust::transform_if(cellTypes.begin(),
+			cellTypes.begin() + currentActiveCellCount, growthSpeed.begin(),
+			GetZero(), IsBoundary());
+
 	/*
-	xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before second step in grow" << std::endl;
-			exit(0);
-		}
-	}
-	*/
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before second step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
 
 	//second step: use the growth magnitude and dt to update growthProgress
 	thrust::transform(growthSpeed.begin(),
@@ -230,14 +223,14 @@ void SceCells::grow2DSimplified(double dt,
 			growthProgress.begin(), growthProgress.begin(),
 			SaxpyFunctorWithMaxOfOne(dt));
 	/*
-	xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before thrid step in grow" << std::endl;
-			exit(0);
-		}
-	}
-	*/
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before thrid step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
 	//third step: use lastCheckPoint and growthProgress to decide whether add point or not
 	thrust::transform(
 			thrust::make_zip_iterator(
@@ -248,14 +241,14 @@ void SceCells::grow2DSimplified(double dt,
 							lastCheckPoint.begin())) + currentActiveCellCount,
 			isScheduledToGrow.begin(), PtCondiOp(growThreshold));
 	/*
-	xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before fourth step in grow" << std::endl;
-			exit(0);
-		}
-	}
-	*/
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before fourth step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
 	// fourth step: use growthProgress and growthXDir&growthYDir to compute
 	// expected length along the growth direction.
 	thrust::transform(growthProgress.begin(),
@@ -263,14 +256,14 @@ void SceCells::grow2DSimplified(double dt,
 			expectedLength.begin(),
 			CompuTarLen(cellInitLength, cellFinalLength));
 	/*
-	xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before fifth step in grow" << std::endl;
-			exit(0);
-		}
-	}
-	*/
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before fifth step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
 	// fifth step:  reducing the smallest value and biggest value
 	// a cell's node to its center point
 	uint totalNodeCountForActiveCells = currentActiveCellCount
@@ -332,14 +325,14 @@ void SceCells::grow2DSimplified(double dt,
 			biggestDistance.begin(), thrust::equal_to<uint>(),
 			thrust::maximum<double>());
 	/*
-	xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before sixth step in grow" << std::endl;
-			exit(0);
-		}
-	}
-	*/
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before sixth step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
 	// sixth step: compute the current length and then
 	// compute its difference with expected length
 	thrust::transform(
@@ -351,24 +344,6 @@ void SceCells::grow2DSimplified(double dt,
 							smallestDistance.begin(), biggestDistance.begin()))
 					+ currentActiveCellCount, lengthDifference.begin(),
 			CompuDiff());
-	/*
-	xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before seventh step in grow"
-					<< std::endl;
-			exit(0);
-		}
-	}
-	xTmpVel = nodes->nodeVelX;
-	for (uint i = 0; i < xTmpVel.size(); i++) {
-		if (isnan(xTmpVel[i])) {
-			std::cout << "Velocity nan detected before seventh step in grow"
-					<< std::endl;
-			exit(0);
-		}
-	}
-	*/
 	// seventh step: use the difference that just computed and growthXDir&growthYDir
 	// to apply stretching force (velocity) on nodes of all cells
 	thrust::transform(
@@ -401,24 +376,10 @@ void SceCells::grow2DSimplified(double dt,
 					thrust::make_tuple(nodes->nodeVelX.begin(),
 							nodes->nodeVelY.begin())),
 			ApplyStretchForce(elongationCoefficient));
-	/*
-	xTmpVel = nodes->nodeVelX;
-	for (uint i = 0; i < xTmpVel.size(); i++) {
-		if (isnan(xTmpVel[i])) {
-			std::cout << "Velocity nan detected before eigth step in grow"
-					<< std::endl;
-			exit(0);
-		}
-	}
-	xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before eigth step in grow" << std::endl;
-			exit(0);
-		}
-	}
-	*/
 	// eighth step: move the cell nodes according to velocity, if the node is active
+
+
+	// move cell nodes
 	thrust::transform_if(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(nodes->nodeVelX.begin(),
@@ -436,14 +397,307 @@ void SceCells::grow2DSimplified(double dt,
 							nodes->nodeLocY.begin())), SaxpyFunctorDim2(dt),
 			isTrue());
 	/*
-	xTmp = nodes->nodeLocX;
-	for (uint i = 0; i < xTmp.size(); i++) {
-		if (isnan(xTmp[i])) {
-			std::cout << "nan detected before ninth step in grow" << std::endl;
-			exit(0);
-		}
-	}
-	*/
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before ninth step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
+	// ninth step: also add a point if scheduled to grow.
+	// This step does not guarantee success ; If adding new point failed, it will not change
+	// isScheduleToGrow and activeNodeCount;
+	bool* nodeIsActiveAddress = thrust::raw_pointer_cast(
+			&(nodes->nodeIsActive[0]));
+	double* nodeXPosAddress = thrust::raw_pointer_cast(&(nodes->nodeLocX[0]));
+	double* nodeYPosAddress = thrust::raw_pointer_cast(&(nodes->nodeLocY[0]));
+
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(isScheduledToGrow.begin(),
+							activeNodeCountOfThisCell.begin(),
+							centerCoordX.begin(), centerCoordY.begin(),
+							countingBegin, lastCheckPoint.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(isScheduledToGrow.begin(),
+							activeNodeCountOfThisCell.begin(),
+							centerCoordX.begin(), centerCoordY.begin(),
+							countingBegin, lastCheckPoint.begin()))
+					+ currentActiveCellCount,
+			thrust::make_zip_iterator(
+					thrust::make_tuple(isScheduledToGrow.begin(),
+							activeNodeCountOfThisCell.begin(),
+							lastCheckPoint.begin())),
+			AddPtOp(maxNodeOfOneCell, addNodeDistance, minDistanceToOtherNode,
+					nodeIsActiveAddress, nodeXPosAddress, nodeYPosAddress,
+					time(NULL), growThreshold));
+
+}
+
+/**
+ * This is a method for cell growth. growth is influened by two chemical fields.
+ * first step: assign the growth magnitude and direction info that was calculated outside
+ *     to internal values
+ *     please note that a cell should not grow if its type is boundary.
+ *
+ * second step: use the growth magnitude and dt to update growthProgress
+ *
+ * third step: use lastCheckPoint and growthProgress to decide whether add point or not
+ *
+ * fourth step: use growthProgress and growthXDir&growthYDir to compute
+ *     expected length along the growth direction.
+ *
+ * fifth step:  reducing the smallest value and biggest value
+ *     a cell's node to its center point
+ *
+ * sixth step: compute the current length and then
+ *     compute its difference with expected length
+ *
+ * seventh step: use the difference that just computed and growthXDir&growthYDir
+ *     to apply stretching force (velocity) on nodes of all cells
+ *
+ * eighth step: cell move according to the velocity computed
+ *
+ * ninth step: also add a point if scheduled to grow.
+ *     This step does not guarantee success ; If adding new point failed, it will not change
+ *     isScheduleToGrow and activeNodeCount;
+ */
+void SceCells::grow2DTwoRegions(double dt, GrowthDistriMap &region1,
+		GrowthDistriMap &region2) {
+	//first step: assign the growth magnitude and direction info that was calculated outside
+	//to internal values
+
+	thrust::counting_iterator<uint> countingBegin(0);
+	double* growthFactorMagAddress = thrust::raw_pointer_cast(
+			&(region1.growthFactorMag[0]));
+	double* growthFactorDirXAddress = thrust::raw_pointer_cast(
+			&(region1.growthFactorDirXComp[0]));
+	double* growthFactorDirYAddress = thrust::raw_pointer_cast(
+			&(region1.growthFactorDirYComp[0]));
+
+	double* growthFactorMagAddress2 = thrust::raw_pointer_cast(
+			&(region2.growthFactorMag[0]));
+	double* growthFactorDirXAddress2 = thrust::raw_pointer_cast(
+			&(region2.growthFactorDirXComp[0]));
+	double* growthFactorDirYAddress2 = thrust::raw_pointer_cast(
+			&(region2.growthFactorDirYComp[0]));
+
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(centerCoordX.begin(),
+							centerCoordY.begin(), cellTypes.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(centerCoordX.begin(),
+							centerCoordY.begin(), cellTypes.begin()))
+					+ currentActiveCellCount,
+			thrust::make_zip_iterator(
+					thrust::make_tuple(growthSpeed.begin(), growthXDir.begin(),
+							growthYDir.begin())),
+			LoadChemDataToNode(region1.gridDimensionX, region1.gridDimensionY,
+					region1.gridSpacing, growthFactorMagAddress,
+					growthFactorDirXAddress, growthFactorDirYAddress,
+					region2.gridDimensionX, region2.gridDimensionY,
+					region2.gridSpacing, growthFactorMagAddress2,
+					growthFactorDirXAddress2, growthFactorDirYAddress2));
+
+	/*
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before second step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
+
+	//second step: use the growth magnitude and dt to update growthProgress
+	thrust::transform(growthSpeed.begin(),
+			growthSpeed.begin() + currentActiveCellCount,
+			growthProgress.begin(), growthProgress.begin(),
+			SaxpyFunctorWithMaxOfOne(dt));
+	/*
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before thrid step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
+	//third step: use lastCheckPoint and growthProgress to decide whether add point or not
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(growthProgress.begin(),
+							lastCheckPoint.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(growthProgress.begin(),
+							lastCheckPoint.begin())) + currentActiveCellCount,
+			isScheduledToGrow.begin(), PtCondiOp(growThreshold));
+	/*
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before fourth step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
+	// fourth step: use growthProgress and growthXDir&growthYDir to compute
+	// expected length along the growth direction.
+	thrust::transform(growthProgress.begin(),
+			growthProgress.begin() + currentActiveCellCount,
+			expectedLength.begin(),
+			CompuTarLen(cellInitLength, cellFinalLength));
+	/*
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before fifth step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
+	// fifth step:  reducing the smallest value and biggest value
+	// a cell's node to its center point
+	uint totalNodeCountForActiveCells = currentActiveCellCount
+			* maxNodeOfOneCell;
+
+	// compute direction of each node to its corresponding cell center
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(
+							make_permutation_iterator(centerCoordX.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(centerCoordY.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthXDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthYDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeIsActive.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(
+							make_permutation_iterator(centerCoordX.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(centerCoordY.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthXDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthYDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
+							nodes->nodeIsActive.begin()))
+					+ totalNodeCountForActiveCells,
+			distToCenterAlongGrowDir.begin(), CompuDist());
+	// because distance will be zero if the node is inactive, it will not be max nor min
+	thrust::reduce_by_key(
+			make_transform_iterator(countingBegin,
+					DivideFunctor(maxNodeOfOneCell)),
+			make_transform_iterator(countingBegin,
+					DivideFunctor(maxNodeOfOneCell))
+					+ totalNodeCountForActiveCells,
+			distToCenterAlongGrowDir.begin(), cellRanksTmpStorage.begin(),
+			smallestDistance.begin(), thrust::equal_to<uint>(),
+			thrust::minimum<double>());
+	thrust::reduce_by_key(
+			make_transform_iterator(countingBegin,
+					DivideFunctor(maxNodeOfOneCell)),
+			make_transform_iterator(countingBegin,
+					DivideFunctor(maxNodeOfOneCell))
+					+ totalNodeCountForActiveCells,
+			distToCenterAlongGrowDir.begin(), cellRanksTmpStorage.begin(),
+			biggestDistance.begin(), thrust::equal_to<uint>(),
+			thrust::maximum<double>());
+	/*
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before sixth step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
+	// sixth step: compute the current length and then
+	// compute its difference with expected length
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(expectedLength.begin(),
+							smallestDistance.begin(), biggestDistance.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(expectedLength.begin(),
+							smallestDistance.begin(), biggestDistance.begin()))
+					+ currentActiveCellCount, lengthDifference.begin(),
+			CompuDiff());
+	// seventh step: use the difference that just computed and growthXDir&growthYDir
+	// to apply stretching force (velocity) on nodes of all cells
+	thrust::transform(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(distToCenterAlongGrowDir.begin(),
+							make_permutation_iterator(lengthDifference.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthXDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthYDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							nodes->nodeVelX.begin(), nodes->nodeVelY.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(distToCenterAlongGrowDir.begin(),
+							make_permutation_iterator(lengthDifference.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthXDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							make_permutation_iterator(growthYDir.begin(),
+									make_transform_iterator(countingBegin,
+											DivideFunctor(maxNodeOfOneCell))),
+							nodes->nodeVelX.begin(), nodes->nodeVelY.begin()))
+					+ totalNodeCountForActiveCells,
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeVelX.begin(),
+							nodes->nodeVelY.begin())),
+			ApplyStretchForce(elongationCoefficient));
+	// eighth step: move the cell nodes according to velocity, if the node is active
+
+	// move cell nodes
+	thrust::transform_if(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeVelX.begin(),
+							nodes->nodeVelY.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeVelX.begin(),
+							nodes->nodeVelY.begin()))
+					+ totalNodeCountForActiveCells,
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeLocX.begin(),
+							nodes->nodeLocY.begin())),
+			nodes->nodeIsActive.begin(),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes->nodeLocX.begin(),
+							nodes->nodeLocY.begin())), SaxpyFunctorDim2(dt),
+			isTrue());
+	/*
+	 xTmp = nodes->nodeLocX;
+	 for (uint i = 0; i < xTmp.size(); i++) {
+	 if (isnan(xTmp[i])) {
+	 std::cout << "nan detected before ninth step in grow" << std::endl;
+	 exit(0);
+	 }
+	 }
+	 */
 	// ninth step: also add a point if scheduled to grow.
 	// This step does not guarantee success ; If adding new point failed, it will not change
 	// isScheduleToGrow and activeNodeCount;
@@ -543,6 +797,8 @@ void SceCells::divide2DSimplified() {
 	thrust::device_vector<double> tmpYValueHold2(nodeStorageCount, 0.0);
 	thrust::device_vector<double> tmpZValueHold2(nodeStorageCount, 0.0);
 
+	thrust::device_vector<CellType> tmpCellTypes(toBeDivideCount);
+
 	thrust::counting_iterator<uint> countingBegin(0);
 
 	// step 2 , continued
@@ -571,22 +827,26 @@ void SceCells::divide2DSimplified() {
 							tmpYValueHold1.begin(), tmpZValueHold1.begin())),
 			isTrue());
 
+	// step 2, continued, copy cell type to new cells
+	thrust::copy_if(cellTypes.begin(),
+			cellTypes.begin() + currentActiveCellCount, isDivided.begin(),
+			tmpCellTypes.begin(), isTrue());
 	/*
-	if (toBeDivideCount != 0) {
-		thrust::host_vector<double> hostTmpDist = tmpDistToCenter1;
-		thrust::host_vector<double> hostXCoord = tmpXValueHold1;
-		thrust::host_vector<double> hostYCoord = tmpYValueHold1;
-		thrust::host_vector<double> hostZCoord = tmpZValueHold1;
-		std::cout << "In the begining, numbers:" << std::endl;
-		for (uint i = 0; i < nodeStorageCount; i++) {
-			std::cout << "(" << hostTmpDist[i] << ",,(" << hostXCoord[i] << ","
-					<< hostYCoord[i] << "," << hostZCoord[i] << ")) # "
-					<< std::endl;
-		}
-		//int jj;
-		//std::cin >> jj;
-	}
-	*/
+	 if (toBeDivideCount != 0) {
+	 thrust::host_vector<double> hostTmpDist = tmpDistToCenter1;
+	 thrust::host_vector<double> hostXCoord = tmpXValueHold1;
+	 thrust::host_vector<double> hostYCoord = tmpYValueHold1;
+	 thrust::host_vector<double> hostZCoord = tmpZValueHold1;
+	 std::cout << "In the begining, numbers:" << std::endl;
+	 for (uint i = 0; i < nodeStorageCount; i++) {
+	 std::cout << "(" << hostTmpDist[i] << ",,(" << hostXCoord[i] << ","
+	 << hostYCoord[i] << "," << hostZCoord[i] << ")) # "
+	 << std::endl;
+	 }
+	 //int jj;
+	 //std::cin >> jj;
+	 }
+	 */
 
 	/*
 	 if (toBeDivideCount != 0) {
@@ -643,6 +903,7 @@ void SceCells::divide2DSimplified() {
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpXValueHold2.begin(),
 							tmpYValueHold2.begin(), tmpZValueHold2.begin())));
+
 	/*
 	 if (toBeDivideCount != 0) {
 	 thrust::host_vector<double> hostTmpDist = tmpDistToCenter1;
@@ -768,11 +1029,8 @@ void SceCells::divide2DSimplified() {
  * @param GridDimensionY number of points in Y direction
  * @param GridSpacing spacing of the growth grid
  */
-void SceCells::growAndDivide(double dt,
-		thrust::device_vector<double> &growthFactorMag,
-		thrust::device_vector<double> &growthFactorDirXComp,
-		thrust::device_vector<double> &growthFactorDirYComp,
-		uint GridDimensionX, uint GridDimensionY, double GridSpacing) {
+void SceCells::growAndDivide(double dt, GrowthDistriMap &region1,
+		GrowthDistriMap &region2) {
 	//thrust::host_vector<double> xTmp = nodes->nodeLocX;
 	//for (uint i = 0; i < xTmp.size(); i++) {
 	//	if (isnan(xTmp[i])) {
@@ -792,8 +1050,9 @@ void SceCells::growAndDivide(double dt,
 	//	}
 	//}
 	std::cout << "In SceCells, before grow 2D:" << std::endl;
-	grow2DSimplified(dt, growthFactorMag, growthFactorDirXComp,
-			growthFactorDirYComp, GridDimensionX, GridDimensionY, GridSpacing);
+	//grow2DSimplified(dt, growthFactorMag, growthFactorDirXComp,
+	//		growthFactorDirYComp, GridDimensionX, GridDimensionY, GridSpacing);
+	grow2DTwoRegions(dt, region1, region2);
 	//xTmp = nodes->nodeLocX;
 	//for (uint i = 0; i < xTmp.size(); i++) {
 	//if (isnan(xTmp[i])) {

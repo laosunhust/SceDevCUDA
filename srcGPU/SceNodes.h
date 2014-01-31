@@ -73,7 +73,7 @@ struct InitFunctor: public thrust::unary_function<Tuint3, Tuint3> {
 	__host__ __device__ InitFunctor(uint maxCell) :
 			maxCellCount(maxCell) {
 	}
-	__host__         __device__ Tuint3 operator()(const Tuint3 &v) {
+	__host__              __device__ Tuint3 operator()(const Tuint3 &v) {
 		uint iter = thrust::get < 2 > (v);
 		uint cellRank = iter / maxCellCount;
 		uint nodeRank = iter % maxCellCount;
@@ -90,7 +90,7 @@ struct AddFunctor: public thrust::binary_function<CVec3, CVec3, CVec3> {
 			_dt(dt) {
 	}
 
-	__host__   __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
+	__host__        __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
 		double xMoveDist = thrust::get < 0 > (vel) * _dt;
 		double yMoveDist = thrust::get < 1 > (vel) * _dt;
 		double zMoveDist = thrust::get < 2 > (vel) * _dt;
@@ -138,7 +138,7 @@ struct pointToBucketIndex2D: public thrust::unary_function<CVec3BoolInt, Tuint2>
 					bucketSize), width((maxX - minX) / bucketSize + 1) {
 	}
 
-	__host__   __device__ Tuint2 operator()(const CVec3BoolInt& v) const {
+	__host__        __device__ Tuint2 operator()(const CVec3BoolInt& v) const {
 		// find the raster indices of p's bucket
 		if (thrust::get < 3 > (v) == true) {
 			unsigned int x = static_cast<unsigned int>((thrust::get < 0
@@ -171,7 +171,7 @@ struct NeighborFunctor2D: public thrust::unary_function<Tuint2, Tuint2> {
 			_numOfBucketsInXDim(numOfBucketsInXDim), _numOfBucketsInYDim(
 					numOfBucketsInYDim) {
 	}
-	__host__      __device__ Tuint2 operator()(const Tuint2 &v) {
+	__host__ __device__ Tuint2 operator()(const Tuint2 &v) {
 		uint relativeRank = thrust::get < 1 > (v) % 9;
 		uint xPos = thrust::get < 0 > (v) % _numOfBucketsInXDim;
 		uint yPos = thrust::get < 0 > (v) / _numOfBucketsInXDim;
@@ -376,6 +376,33 @@ struct AddSceForce: public thrust::unary_function<Tuuuddd, CVec3> {
 };
 
 /**
+ * return a tuple of three zero double numbers.
+ */
+struct GetZeroTupleThree: public thrust::unary_function<uint, CVec3> {
+	__host__ __device__ CVec3 operator()(const uint &value) {
+		return thrust::make_tuple(0.0, 0.0, 0.0);
+	}
+};
+
+/**
+ * return true if this number is less than initial parameter.
+ */
+struct isLessThan: public thrust::unary_function<uint, bool> {
+	uint initValue;
+	__host__ __device__ isLessThan(uint initV) :
+			initValue(initV) {
+	}
+
+	__host__ __device__ bool operator()(uint val) {
+		if (val < initValue) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+};
+
+/**
  * Data structure for calculating nearby node interaction.
  * To maximize GPU performance, I choose to implement Structure of Arrays(SOA)
  * instead of Array Of Structure, which is commonly used in serial algorithms.
@@ -414,6 +441,11 @@ public:
 	uint maxTotalECMNodeCount;
 	// @currentActiveECM represents number of ECM that are currently active.
 	uint currentActiveECM;
+
+	// @cellSpaceForBdry First several spaces are reserved for boundary.
+	uint cellSpaceForBdry;
+	// because several spaces are reserved for boundary, some nodes can't move
+	uint fixedNodeCount;
 
 	//thrust::device_vector<uint> cellRanks;
 	//thrust::device_vector<uint> nodeRanks;
@@ -520,6 +552,16 @@ public:
 
 	void setMaxTotalCellNodeCount(uint maxTotalCellNodeCount) {
 		this->maxTotalCellNodeCount = maxTotalCellNodeCount;
+	}
+
+	uint getCellSpaceForBdry() const {
+		return cellSpaceForBdry;
+	}
+
+	void setCellSpaceForBdry(uint cellSpaceForBdry) {
+		this->cellSpaceForBdry = cellSpaceForBdry;
+		// these nodes are marked as fixed. We will empty its velocity in each iteration
+		fixedNodeCount = cellSpaceForBdry * maxNodeOfOneCell;
 	}
 };
 

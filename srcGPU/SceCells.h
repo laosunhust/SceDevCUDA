@@ -8,6 +8,7 @@
 
 typedef thrust::tuple<double, double, CellType> CVec2Type;
 typedef thrust::tuple<bool, CellType> boolType;
+typedef thrust::tuple<double, double, bool, CellType> Vel2DActiveType;
 
 /**
  * Functor for divide operation.
@@ -20,7 +21,7 @@ struct DivideFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ DivideFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__         __device__ uint operator()(const uint &num) {
+	__host__            __device__ uint operator()(const uint &num) {
 		return num / dividend;
 	}
 };
@@ -36,7 +37,7 @@ struct ModuloFunctor: public thrust::unary_function<uint, uint> {
 	__host__ __device__ ModuloFunctor(uint dividendInput) :
 			dividend(dividendInput) {
 	}
-	__host__         __device__ uint operator()(const uint &num) {
+	__host__                      __device__ uint operator()(const uint &num) {
 		return num % dividend;
 	}
 };
@@ -75,7 +76,7 @@ struct isActiveNoneBdry {
  * @return output result of addition
  */
 struct CVec3Add: public thrust::binary_function<CVec3, CVec3, CVec3> {
-	__host__     __device__ CVec3 operator()(const CVec3 &vec1, const CVec3 &vec2) {
+	__host__                  __device__ CVec3 operator()(const CVec3 &vec1, const CVec3 &vec2) {
 		return thrust::make_tuple(
 				thrust::get < 0 > (vec1) + thrust::get < 0 > (vec2),
 				thrust::get < 1 > (vec1) + thrust::get < 1 > (vec2),
@@ -93,7 +94,7 @@ struct CVec3Add: public thrust::binary_function<CVec3, CVec3, CVec3> {
  *        output3 third division result \n
  */
 struct CVec3Divide: public thrust::binary_function<CVec3, double, CVec3> {
-	__host__     __device__ CVec3 operator()(const CVec3 &vec1,
+	__host__                  __device__ CVec3 operator()(const CVec3 &vec1,
 			const double &divisor) {
 		return thrust::make_tuple(thrust::get < 0 > (vec1) / divisor,
 				thrust::get < 1 > (vec1) / divisor,
@@ -132,7 +133,7 @@ struct LoadGridDataToNode: public thrust::unary_function<CVec2, CVec3> {
 					gridSpacing), _gridMagValue(gridMagValue), _gridDirXCompValue(
 					gridDirXCompValue), _gridDirYCompValue(gridDirYCompValue) {
 	}
-	__host__         __device__ CVec3 operator()(const CVec2 &d2) const {
+	__host__                      __device__ CVec3 operator()(const CVec2 &d2) const {
 		double xCoord = thrust::get < 0 > (d2);
 		double yCoord = thrust::get < 1 > (d2);
 		uint gridLoc = (uint) (xCoord / _gridSpacing)
@@ -189,7 +190,7 @@ struct LoadChemDataToNode: public thrust::unary_function<CVec2Type, CVec3> {
 					gridSpacing2), _gridMagValue2(gridMagValue2), _gridDirXCompValue2(
 					gridDirXCompValue2), _gridDirYCompValue2(gridDirYCompValue2) {
 	}
-	__host__         __device__ CVec3 operator()(const CVec2Type &d2) const {
+	__host__                      __device__ CVec3 operator()(const CVec2Type &d2) const {
 		double xCoord = thrust::get < 0 > (d2);
 		double yCoord = thrust::get < 1 > (d2);
 		CellType type = thrust::get < 2 > (d2);
@@ -264,7 +265,7 @@ struct SaxpyFunctorDim2: public thrust::binary_function<CVec2, CVec2, CVec2> {
 	__host__ __device__ SaxpyFunctorDim2(double dt) :
 			_dt(dt) {
 	}
-	__host__     __device__ CVec2 operator()(const CVec2 &vec1, const CVec2 &vec2) {
+	__host__                  __device__ CVec2 operator()(const CVec2 &vec1, const CVec2 &vec2) {
 		double xRes = thrust::get < 0 > (vec1) * _dt + thrust::get < 0 > (vec2);
 		double yRes = thrust::get < 1 > (vec1) * _dt + thrust::get < 1 > (vec2);
 		return thrust::make_tuple(xRes, yRes);
@@ -311,7 +312,7 @@ struct GetZero: public thrust::unary_function<CellType, double> {
  * determines if cell type is boundary.
  */
 struct IsBoundary: public thrust::unary_function<CellType, bool> {
-	__host__     __device__ uint operator()(const CellType &type) {
+	__host__                  __device__ uint operator()(const CellType &type) {
 		if (type == Boundary) {
 			return true;
 		} else {
@@ -376,7 +377,7 @@ struct AddPtOp: thrust::unary_function<BoolUIDDUID, BoolUID> {
 					nodeYPosAddress), _growThreshold(growThreshold), m_seed(
 					seed) {
 	}
-	__host__     __device__ BoolUID operator()(const BoolUIDDUID &biddi) {
+	__host__                  __device__ BoolUID operator()(const BoolUIDDUID &biddi) {
 		const double pI = acos(-1.0);
 		bool isScheduledToGrow = thrust::get < 0 > (biddi);
 		uint activeNodeCountOfThisCell = thrust::get < 1 > (biddi);
@@ -514,7 +515,7 @@ struct ApplyStretchForce: thrust::unary_function<CVec6, CVec2> {
 	__host__ __device__ ApplyStretchForce(double elongationCoefficient) :
 			_elongationCoefficient(elongationCoefficient) {
 	}
-	__host__     __device__ CVec2 operator()(const CVec6 &vec6) {
+	__host__                  __device__ CVec2 operator()(const CVec6 &vec6) {
 		double distToCenterAlongGrowDir = thrust::get < 0 > (vec6);
 		// minimum distance of node to its corresponding center along growth direction
 		double lengthDifference = thrust::get < 1 > (vec6);
@@ -537,7 +538,7 @@ struct ApplyChemoVel: thrust::unary_function<CVec5, CVec2> {
 	__host__ __device__ ApplyChemoVel(double chemoCoefficient) :
 			_chemoCoefficient(chemoCoefficient) {
 	}
-	__host__   __device__ CVec2 operator()(const CVec5 &vec5) {
+	__host__                __device__ CVec2 operator()(const CVec5 &vec5) {
 		double growthSpeed = thrust::get < 0 > (vec5);
 		double growthXDir = thrust::get < 1 > (vec5);
 		double growthYDir = thrust::get < 2 > (vec5);
@@ -562,7 +563,7 @@ struct LeftShiftFunctor: thrust::unary_function<uint, uint> {
 	__host__ __device__ LeftShiftFunctor(uint maxNodeOfOneCell) :
 			_shiftLeftOffset(maxNodeOfOneCell / 2) {
 	}
-	__host__     __device__ uint operator()(const uint &position) {
+	__host__                  __device__ uint operator()(const uint &position) {
 		uint result;
 		if (position < _shiftLeftOffset) {
 			// could be 0, because these region will actually never be used
@@ -632,7 +633,7 @@ struct CompuPos: thrust::unary_function<Tuint2, uint> {
 	__host__ __device__ CompuPos(uint maxNodeOfOneCell) :
 			_maxNodeCountPerCell(maxNodeOfOneCell) {
 	}
-	__host__                            __device__ uint operator()(const Tuint2 &vec) {
+	__host__                                         __device__ uint operator()(const Tuint2 &vec) {
 		uint rankInCell = thrust::get < 0 > (vec) % _maxNodeCountPerCell;
 		uint cellRank = thrust::get < 1 > (vec);
 		return (cellRank * _maxNodeCountPerCell + rankInCell);
@@ -657,7 +658,7 @@ struct CompuIsDivide: thrust::unary_function<CVec3Int, bool> {
 			_isDivideCriticalRatio(isDivideCriticalRatio), _maxNodePerCell(
 					maxNodePerCell) {
 	}
-	__host__         __device__ uint operator()(const CVec3Int &vec) {
+	__host__            __device__ uint operator()(const CVec3Int &vec) {
 		double lengthDifference = thrust::get < 0 > (vec);
 		double expectedLength = thrust::get < 1 > (vec);
 		double currentLength = expectedLength - lengthDifference;
@@ -669,6 +670,24 @@ struct CompuIsDivide: thrust::unary_function<CVec3Int, bool> {
 		} else {
 			return false;
 		}
+	}
+};
+
+/**
+ * Functor for modify veolcities of all nodes given node type and isActive
+ * @param input1: take velocity , type and isActive info of node
+ * @return output: modified velocity.
+ */
+struct VelocityModifier: public thrust::unary_function<Vel2DActiveType, CVec2> {
+	__host__ __device__ VelocityModifier() {
+	}
+	// for now no modification
+	__host__          __device__ CVec2 operator()(const Vel2DActiveType &nodeInfo) {
+		double velX = thrust::get < 0 > (nodeInfo);
+		double velY = thrust::get < 1 > (nodeInfo);
+		bool isActive = thrust::get < 2 > (nodeInfo);
+		CellType type = thrust::get < 3 > (nodeInfo);
+		return thrust::make_tuple(velX, velY);
 	}
 };
 
@@ -823,21 +842,25 @@ public:
 	uint maxNodeOfBdry;      // represents maximum number of nodes of boundary.
 
 	uint beginPosOfEpi;      // represents begining position of epithilum layer.
-	uint maxNodeOfEpi;       // represents maximum number of nodes of epithilum layer.
+	uint maxNodeOfEpi; // represents maximum number of nodes of epithilum layer.
 
 	uint maxNodeOfECM;       // represents maximum number of nodes per ECM
-	uint beginPosOfECM;      // represents begining position of ECM.
+	uint beginPosOfECM; // represents begining position of ECM (in cell perspective)
+	uint beginPosOfECMNode; // represents begining position of ECM (in node perspective)
 	uint maxECMCount;        // represents maximum number of ECM.
 
-	uint beginPosOfCells;    // represents begining position of cells.
+	uint beginPosOfCells; // represents begining position of cells (in cell perspective)
+	uint beginPosOfCellsNode; // represents begining position of cells (in node perspective)
 	uint maxNodeOfOneCell;   // represents maximum number of nodes per cell
 	uint maxCellCount;       // represents maximum number of cells in the system
 
 	uint maxCellCountAll;    // represents maximum number of all cells
-	                         // (including pesudo-cells) in the system
+							 // (including pesudo-cells) in the system
 
 	uint maxTotalNodeCountCellOnly; // max possible node count for cell representation
 	uint currentActiveCellCount; // the number of active cells would keep changing
+	uint currentActiveECMCount;     // the number of active ECM might change.
+	uint currectActiveEpiNode;    // the number of epithilum nodes might change.
 
 	// if growthProgress[i] - lastCheckPoint[i] > growThreshold then isScheduledToGrow[i] = true;
 	double growThreshold;
@@ -905,18 +928,60 @@ public:
 	// temp value for holding a node direction to its corresponding center
 	thrust::device_vector<double> distToCenterAlongGrowDir;
 
+	// ************************* these parameters are used for cell growth **************************
+	double* growthFactorMagAddress;
+	double* growthFactorDirXAddress;
+	double* growthFactorDirYAddress;
+
+	// obtain pointer address for second region
+	double* growthFactorMagAddress2;
+	double* growthFactorDirXAddress2;
+	double* growthFactorDirYAddress2;
+
+	uint totalNodeCountForActiveCells;
+
+	bool* nodeIsActiveAddress;
+	double* nodeXPosAddress;
+	double* nodeYPosAddress;
+
+	double dt;
+	// ************************* these parameters are used for cell growth **************************
+
+	// ************************ these parameters are used for cell division *************************
+	// sum all bool values which indicate whether the cell is going to divide.
+	// toBeDivideCount is the total number of cells going to divide.
+	uint toBeDivideCount;
+	uint nodeStorageCount;
+	thrust::device_vector<bool> tmpIsActiveHold1;
+	thrust::device_vector<double> tmpDistToCenter1;
+	thrust::device_vector<uint> tmpCellRankHold1;
+	thrust::device_vector<double> tmpXValueHold1;
+	thrust::device_vector<double> tmpYValueHold1;
+	thrust::device_vector<double> tmpZValueHold1;
+
+	thrust::device_vector<bool> tmpIsActiveHold2;
+	thrust::device_vector<double> tmpDistToCenter2;
+	thrust::device_vector<double> tmpXValueHold2;
+	thrust::device_vector<double> tmpYValueHold2;
+	thrust::device_vector<double> tmpZValueHold2;
+
+	thrust::device_vector<CellType> tmpCellTypes;
+	// ************************ these parameters are used for cell division *************************
+
+	// in this class, there are a lot of arrays that store information for each cell
+	// this counting iterator is used for all these arrays indicating the begining.
+	thrust::counting_iterator<uint> countingBegin;
+	thrust::constant_iterator<uint> initCellCount;
+	thrust::constant_iterator<double> initGrowthProgress;
+
 	SceCells_M(SceNodes* nodesInput);
 	SceCells_M() {
 	}
 
 	void distributeIsActiveInfo();
-	void growAndDivide(double dt, GrowthDistriMap &region1,
+	void runAllCellLevelLogics(double dt, GrowthDistriMap &region1,
 			GrowthDistriMap &region2);
-	void grow2DSimplified(double dt,
-			thrust::device_vector<double> &growthFactorMag,
-			thrust::device_vector<double> &growthFactorDirXComp,
-			thrust::device_vector<double> &growthFactorDirYComp,
-			uint GridDimensionX, uint GridDimensionY, double GridSpacing);
+	void allComponentsMove();
 	void grow2DTwoRegions(double dt, GrowthDistriMap &region1,
 			GrowthDistriMap &region2);
 
@@ -924,9 +989,129 @@ public:
 	void processDivisionInfoAndAddNewCells();
 	void divide2DSimplified();
 
+	/**
+	 * we need to copy the growth information from grid for chemical to cell nodes.
+	 */
+	void copyGrowInfoFromGridToCells(GrowthDistriMap &region1,
+			GrowthDistriMap &region2);
+
+	/**
+	 * Use the growth magnitude and dt to update growthProgress.
+	 */
+	void updateGrowthProgress();
+
+	/**
+	 * Decide if the cells are going to add a node or not.
+	 * Use lastCheckPoint and growthProgress to decide whether add point or not
+	 */
+	void decideIsScheduleToGrow();
+
+	/**
+	 * Calculate target length of cell given the cell growth progress.
+	 * length is along the growth direction.
+	 */
+	void computeCellTargetLength();
+
+	/**
+	 * Compute distance of each node to its corresponding cell center.
+	 * The distantce could be either positive or negative, depending on the pre-defined
+	 * growth direction.
+	 */
+	void computeDistToCellCenter();
+
+	/**
+	 * For nodes of each cell, find the maximum and minimum distance to the center.
+	 * We will then calculate the current length of a cell along its growth direction
+	 * using max and min distance to the center.
+	 */
+	void findMinAndMaxDistToCenter();
+
+	/**
+	 * Compute the difference for cells between their expected length and current length.
+	 */
+	void computeLenDiffExpCur();
+
+	/**
+	 * Use the difference that just computed and growthXDir&growthYDir
+	 * to apply stretching force (velocity) on nodes of all cells
+	 */
+	void stretchCellGivenLenDiff();
+
+	/**
+	 * This is just an attempt. Cells move according to chemicals.
+	 */
+	void cellChemotaxis();
+
+	/**
+	 * Adjust the velocities of nodes.
+	 * For example, velocity of boundary nodes must be zero.
+	 */
+	void adjustNodeVel();
+
+	/**
+	 * Move nodes according to the velocity we just adjusted.
+	 */
+	void moveNodes();
+
+	/**
+	 * Add a point to a cell if it is scheduled to grow.
+	 * This step does not guarantee success ; If adding new point failed, it will not change
+	 * isScheduleToGrow and activeNodeCount;
+	 */
+	void addPointIfScheduledToGrow();
+
 	thrust::device_vector<CellType> getCellTypes() const {
 		return cellTypesAll;
 	}
+
+	/**
+	 * 2D version of cell division.
+	 * Division process is done by creating two temporary vectors to hold the node information
+	 * that are going to divide.
+	 *
+	 * step 1: based on lengthDifference, expectedLength and growthProgress,
+	 *     this process determines whether a certain cell is ready to divide and then assign
+	 *     a boolean value to isDivided.
+	 *
+	 * step 2. copy those cells that will divide in to the temp vectors created
+	 *
+	 * step 3. For each cell in the temp vectors, we sort its nodes by its distance to the
+	 * corresponding cell center.
+	 * This step is not very effcient when the number of cells going to divide is big.
+	 * but this is unlikely to happen because cells will divide according to external chemical signaling
+	 * and each will have different divide progress.
+	 *
+	 * step 4. copy the right part of each cell of the sorted array (temp1) to left part of each cell of
+	 * another array
+	 *
+	 * step 5. transform isActive vector of both temp1 and temp2, making only left part of each cell active.
+	 *
+	 * step 6. insert temp2 to the end of the cell array
+	 *
+	 * step 7. copy temp1 to the previous position of the cell array.
+	 *
+	 * step 8. add activeCellCount of the system.
+	 *
+	 * step 9. mark isDivide of all cells to false.
+	 */
+
+	void decideIfGoingToDivide();
+
+	void copyCellsPreDivision();
+
+	void sortNodesAccordingToDist();
+
+	void copyLeftAndRightToSeperateArrays();
+
+	void transformIsActiveArrayOfBothArrays();
+
+	void addSecondArrayToCellArray();
+
+	void copyFirstArrayToPreviousPos();
+
+	void updateActiveCellCount();
+
+	void markIsDivideFalse();
 
 	/**
 	 * This is different from the default set function.

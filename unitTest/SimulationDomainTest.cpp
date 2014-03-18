@@ -84,52 +84,6 @@ void generateCellInitInfo(std::string meshInput, uint numberOfInitCells,
 	}
 }
 
-TEST(SingleCellGrowTest,hasGrowthTest) {
-	cudaSetDevice(myDeviceID);
-	ConfigParser parser;
-	std::string configFileName = "sceCell.config";
-	globalConfigVars = parser.parseConfigFile(configFileName);
-
-	double SimulationTotalTime = globalConfigVars.getConfigValue(
-			"SimulationTotalTime").toDouble();
-	double SimulationTimeStep = globalConfigVars.getConfigValue(
-			"SimulationTimeStep").toDouble();
-	int TotalNumOfOutputFrames = globalConfigVars.getConfigValue(
-			"TotalNumOfOutputFrames").toInt();
-
-	std::string loadMeshInput;
-	std::string animationInput;
-	std::vector < std::string > boundaryMeshFileNames;
-	std::string animationFolder;
-	generateStringInputs(loadMeshInput, animationInput, animationFolder,
-			boundaryMeshFileNames);
-
-	const double simulationTime = SimulationTotalTime;
-	const double dt = SimulationTimeStep;
-	const int numOfTimeSteps = simulationTime / dt;
-	const int totalNumOfOutputFrame = TotalNumOfOutputFrames;
-	const int outputAnimationAuxVarible = numOfTimeSteps
-			/ totalNumOfOutputFrame;
-
-	std::vector<double> initCellNodePosX;
-	std::vector<double> initCellNodePosY;
-	std::vector<double> centerPosX;
-	std::vector<double> centerPosY;
-
-	SimulationDomainGPU simuDomain;
-	// here we only want one cell in region that has no chemical concentration
-	uint numberOfInitCells = 1;
-	generateCellInitInfo(loadMeshInput, numberOfInitCells, initCellNodePosX,
-			initCellNodePosY, centerPosX, centerPosY);
-	std::cout << "finished generate cell info" << std::endl;
-	simuDomain.initializeCells(initCellNodePosX, initCellNodePosY, centerPosX,
-			centerPosY,0);
-	//EXPECT_NEAR(simuDomain.cells.growthProgress[0], 0.0, errTol);
-	simuDomain.runAllLogic(dt);
-	EXPECT_NEAR(simuDomain.cells.growthSpeed[0], 0.0, errTol);
-	EXPECT_NEAR(simuDomain.cells.growthProgress[0], 0.0, errTol);
-}
-
 TEST(SingleCellGrowTest,noGrowthTest) {
 	cudaSetDevice(myDeviceID);
 	ConfigParser parser;

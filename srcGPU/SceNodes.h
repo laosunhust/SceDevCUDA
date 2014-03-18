@@ -54,6 +54,7 @@ typedef thrust::tuple<double, double, double> CVec3;
 typedef thrust::tuple<double, double, double, uint> CVec3Int;
 typedef thrust::tuple<double, double, double, bool, uint> CVec3BoolInt;
 typedef thrust::tuple<double, double, double, double> CVec4;
+typedef thrust::tuple<double, double, double, double, double> CVec5;
 typedef thrust::tuple<double, double, double, double, double, double> CVec6;
 typedef thrust::tuple<double, double, double, double, double, double, bool> CVec6Bool;
 typedef thrust::tuple<uint, uint> Tuint2;
@@ -66,6 +67,13 @@ typedef thrust::tuple<uint, uint, uint, double, double, double> Tuuuddd;
 //extern double sceIntraParaCPU[4];
 
 /**
+ * enum type cell type.
+ */
+enum CellType {
+	Boundary, Profile, Epith, FNM, MX
+};
+
+/**
  * Depreciated.
  */
 struct InitFunctor: public thrust::unary_function<Tuint3, Tuint3> {
@@ -73,7 +81,7 @@ struct InitFunctor: public thrust::unary_function<Tuint3, Tuint3> {
 	__host__ __device__ InitFunctor(uint maxCell) :
 			maxCellCount(maxCell) {
 	}
-	__host__              __device__ Tuint3 operator()(const Tuint3 &v) {
+	__host__                                 __device__ Tuint3 operator()(const Tuint3 &v) {
 		uint iter = thrust::get < 2 > (v);
 		uint cellRank = iter / maxCellCount;
 		uint nodeRank = iter % maxCellCount;
@@ -90,7 +98,7 @@ struct AddFunctor: public thrust::binary_function<CVec3, CVec3, CVec3> {
 			_dt(dt) {
 	}
 
-	__host__        __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
+	__host__                           __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
 		double xMoveDist = thrust::get < 0 > (vel) * _dt;
 		double yMoveDist = thrust::get < 1 > (vel) * _dt;
 		double zMoveDist = thrust::get < 2 > (vel) * _dt;
@@ -138,7 +146,7 @@ struct pointToBucketIndex2D: public thrust::unary_function<CVec3BoolInt, Tuint2>
 					bucketSize), width((maxX - minX) / bucketSize + 1) {
 	}
 
-	__host__        __device__ Tuint2 operator()(const CVec3BoolInt& v) const {
+	__host__                           __device__ Tuint2 operator()(const CVec3BoolInt& v) const {
 		// find the raster indices of p's bucket
 		if (thrust::get < 3 > (v) == true) {
 			unsigned int x = static_cast<unsigned int>((thrust::get < 0
@@ -171,7 +179,7 @@ struct NeighborFunctor2D: public thrust::unary_function<Tuint2, Tuint2> {
 			_numOfBucketsInXDim(numOfBucketsInXDim), _numOfBucketsInYDim(
 					numOfBucketsInYDim) {
 	}
-	__host__ __device__ Tuint2 operator()(const Tuint2 &v) {
+	__host__                    __device__ Tuint2 operator()(const Tuint2 &v) {
 		uint relativeRank = thrust::get < 1 > (v) % 9;
 		uint xPos = thrust::get < 0 > (v) % _numOfBucketsInXDim;
 		uint yPos = thrust::get < 0 > (v) / _numOfBucketsInXDim;
@@ -303,11 +311,18 @@ void calculateAndAddIntraForce(double &xPos, double &yPos, double &zPos,
 		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
 		double &zRes);
 
+__device__
+void calculateAndAddInterForceDiffType(double &xPos, double &yPos, double &zPos,
+		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
+		double &zRes);
+
 __device__ bool bothNodesCellNode(uint nodeGlobalRank1, uint nodeGlobalRank2,
 		uint cellNodesThreshold);
 
 __device__ bool isSameCell(uint nodeGlobalRank1, uint nodeGlobalRank2,
 		uint nodeCountPerCell);
+
+__device__ bool ofSameType(uint cellType1, uint cellType2);
 
 /**
  * a complicated data structure for adding subcellular element force to cell nodes.
@@ -376,10 +391,88 @@ struct AddSceForce: public thrust::unary_function<Tuuuddd, CVec3> {
 };
 
 /**
+ * a complicated data structure for adding subcellular element force to cell nodes.
+ * This data structure is designed in an unconventional way because of performance considerations.
+ * Slightly modified from the original version - AddSceForce.
+ */
+struct AddSceForceWType: public thrust::unary_function<Tuuuddd, CVec3> {
+	uint* _extendedValuesAddress;
+	uint* _nodeTypeAddress;
+	double* _nodeLocXAddress;
+	double* _nodeLocYAddress;
+	double* _nodeLocZAddress;
+	uint _cellNodesThreshold;
+	uint _nodeCountPerCell;
+	uint _cellNodesPerECM;
+	__host__ __device__ AddSceForceWType(uint* valueAddress,
+			double* nodeLocXAddress, double* nodeLocYAddress,
+			double* nodeLocZAddress, uint cellNodesThreshold,
+			uint nodeCountPerCell, uint celLNodesPerECM) :
+			_extendedValuesAddress(valueAddress), _nodeLocXAddress(
+					nodeLocXAddress), _nodeLocYAddress(nodeLocYAddress), _nodeLocZAddress(
+					nodeLocZAddress), _cellNodesThreshold(cellNodesThreshold), _nodeCountPerCell(
+					nodeCountPerCell), _cellNodesPerECM(celLNodesPerECM) {
+	}
+	__device__ CVec3 operator()(const Tuuuddd &u3d3) const {
+		uint begin = thrust::get < 0 > (u3d3);
+		uint end = thrust::get < 1 > (u3d3);
+		uint myValue = thrust::get < 2 > (u3d3);
+		double xPos = thrust::get < 3 > (u3d3);
+		double yPos = thrust::get < 4 > (u3d3);
+		double zPos = thrust::get < 5 > (u3d3);
+		double xRes = 0.0;
+		double yRes = 0.0;
+		double zRes = 0.0;
+
+		for (uint i = begin; i < end; i++) {
+			//for (uint i = begin; i < begin+1; i++) {
+			uint nodeRankOfOtherNode = _extendedValuesAddress[i];
+			if (nodeRankOfOtherNode == myValue) {
+				continue;
+			}
+			if (bothNodesCellNode(myValue, nodeRankOfOtherNode,
+					_cellNodesThreshold)) {
+				if (isSameCell(myValue, nodeRankOfOtherNode,
+						_nodeCountPerCell)) {
+					calculateAndAddIntraForce(xPos, yPos, zPos,
+							_nodeLocXAddress[nodeRankOfOtherNode],
+							_nodeLocYAddress[nodeRankOfOtherNode],
+							_nodeLocZAddress[nodeRankOfOtherNode], xRes, yRes,
+							zRes);
+				} else {
+					if (ofSameType(_nodeTypeAddress[nodeRankOfOtherNode],
+							_nodeTypeAddress[myValue])) {
+						calculateAndAddInterForce(xPos, yPos, zPos,
+								_nodeLocXAddress[nodeRankOfOtherNode],
+								_nodeLocYAddress[nodeRankOfOtherNode],
+								_nodeLocZAddress[nodeRankOfOtherNode], xRes,
+								yRes, zRes);
+					} else {
+						calculateAndAddInterForceDiffType(xPos, yPos, zPos,
+								_nodeLocXAddress[nodeRankOfOtherNode],
+								_nodeLocYAddress[nodeRankOfOtherNode],
+								_nodeLocZAddress[nodeRankOfOtherNode], xRes,
+								yRes, zRes);
+					}
+
+				}
+			} else {
+				calculateAndAddECMForce(xPos, yPos, zPos,
+						_nodeLocXAddress[nodeRankOfOtherNode],
+						_nodeLocYAddress[nodeRankOfOtherNode],
+						_nodeLocZAddress[nodeRankOfOtherNode], xRes, yRes,
+						zRes);
+			}
+		}
+		return thrust::make_tuple(xRes, yRes, zRes);
+	}
+};
+
+/**
  * return a tuple of three zero double numbers.
  */
 struct GetZeroTupleThree: public thrust::unary_function<uint, CVec3> {
-	__host__ __device__ CVec3 operator()(const uint &value) {
+	__host__  __device__ CVec3 operator()(const uint &value) {
 		return thrust::make_tuple(0.0, 0.0, 0.0);
 	}
 };
@@ -423,10 +516,17 @@ public:
 	SceNodes(uint maxTotalCellCount, uint maxNodeInCell);
 	SceNodes(uint maxTotalCellCount, uint maxNodeInCell, uint maxTotalECMCount,
 			uint maxNodeInECM);
+	// in the new version, we need to initialize the nodes together with initial
+	// boundary nodes and initial profile nodes.
+	SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
+			uint maxTotalECMCount, uint maxNodeInECM, uint maxTotalCellCount,
+			uint maxNodeInCell);
 	// @maxNodeOfOneCell represents maximum number of nodes per cell
 	uint maxNodeOfOneCell;
 	// @maxCellCount represents maximum number of cells in the system
 	uint maxCellCount;
+	// @maxCellCount represents maximum number of cells(including pesudo-cells) in the system
+	uint maxCellCountAll;
 	// @maxTotalNodeCount represents maximum total number of nodes of all cells
 	// maxTotalCellNodeCount = maxNodeOfOneCell * maxCellCount;
 	uint maxTotalCellNodeCount;
@@ -441,6 +541,11 @@ public:
 	uint maxTotalECMNodeCount;
 	// @currentActiveECM represents number of ECM that are currently active.
 	uint currentActiveECM;
+
+	// epithilum might grow or might not. Set maxProfileNodeCount as the maximum possible node count
+	uint maxProfileNodeCount;
+	// no matter whether epithilum grow or not we need to track the cucrent count.
+	uint currentActiveProfileNodeCount;
 
 	// @cellSpaceForBdry First several spaces are reserved for boundary.
 	uint cellSpaceForBdry;
@@ -469,6 +574,13 @@ public:
 	thrust::device_vector<double> nodeVelY;
 	// Z velocities of nodes
 	thrust::device_vector<double> nodeVelZ;
+
+	// in order to represent differential adhesion, we also need an vector
+	// for each cell node to identify the cell type.
+	thrust::device_vector<CellType> nodeCellType;
+
+	// for each node, we need to identify which cell it belongs to.
+	thrust::device_vector<uint> nodeCellRank;
 
 	// bucket key means which bucket ID does a certain point fit into
 	thrust::device_vector<uint> bucketKeys;
@@ -562,6 +674,54 @@ public:
 		this->cellSpaceForBdry = cellSpaceForBdry;
 		// these nodes are marked as fixed. We will empty its velocity in each iteration
 		fixedNodeCount = cellSpaceForBdry * maxNodeOfOneCell;
+	}
+
+	uint getCurrentActiveProfileNodeCount() const {
+		return currentActiveProfileNodeCount;
+	}
+
+	void setCurrentActiveProfileNodeCount(uint currentActiveProfileNodeCount) {
+		this->currentActiveProfileNodeCount = currentActiveProfileNodeCount;
+	}
+
+	uint getFixedNodeCount() const {
+		return fixedNodeCount;
+	}
+
+	void setFixedNodeCount(uint fixedNodeCount) {
+		this->fixedNodeCount = fixedNodeCount;
+	}
+
+	uint getMaxEcmCount() const {
+		return maxECMCount;
+	}
+
+	void setMaxEcmCount(uint maxEcmCount) {
+		maxECMCount = maxEcmCount;
+	}
+
+	uint getMaxNodePerEcm() const {
+		return maxNodePerECM;
+	}
+
+	void setMaxNodePerEcm(uint maxNodePerEcm) {
+		maxNodePerECM = maxNodePerEcm;
+	}
+
+	uint getMaxProfileNodeCount() const {
+		return maxProfileNodeCount;
+	}
+
+	void setMaxProfileNodeCount(uint maxProfileNodeCount) {
+		this->maxProfileNodeCount = maxProfileNodeCount;
+	}
+
+	uint getMaxCellCountAll() const {
+		return maxCellCountAll;
+	}
+
+	void setMaxCellCountAll(uint maxCellCountAll) {
+		this->maxCellCountAll = maxCellCountAll;
 	}
 };
 

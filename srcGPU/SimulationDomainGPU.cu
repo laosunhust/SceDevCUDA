@@ -7,22 +7,23 @@ using namespace std;
  */
 SimulationDomainGPU::SimulationDomainGPU() {
 	cout << "before allocation memory" << endl;
-	thrust::host_vector<int> aa;
-	aa.resize(50000);
+	//thrust::host_vector<int> aa;
+	//aa.resize(50000);
 	//thrust::device_vector<int> bb = aa;
-	thrust::device_vector<double> cc(5000);
+	//thrust::device_vector<double> cc(5000);
 	cout << "after allocate memory" << endl;
 
 	cout << "start to create simulatonDomainGPU object" << endl;
 
-	uint maxCellInDomain = globalConfigVars.getConfigValue(
-			string("MaxCellInDomain")).toInt();
-	uint maxNodePerCell =
+	maxCellInDomain =
+			globalConfigVars.getConfigValue(string("MaxCellInDomain")).toInt();
+	maxNodePerCell =
 			globalConfigVars.getConfigValue("MaxNodePerCell").toDouble();
-	uint maxECMInDomain =
+	maxECMInDomain =
 			globalConfigVars.getConfigValue("MaxECMInDomain").toDouble();
-	uint maxNodePerECM =
-			globalConfigVars.getConfigValue("MaxNodePerECM").toDouble();
+	maxNodePerECM = globalConfigVars.getConfigValue("MaxNodePerECM").toDouble();
+	FinalToInitProfileNodeCountRatio = globalConfigVars.getConfigValue(
+			"FinalToInitProfileNodeCountRatio").toDouble();
 
 	minX = globalConfigVars.getConfigValue("DOMAIN_XMIN").toDouble();
 	maxX = globalConfigVars.getConfigValue("DOMAIN_XMAX").toDouble();
@@ -92,6 +93,7 @@ SimulationDomainGPU::SimulationDomainGPU() {
 }
 
 /*
+ * Going to depreciate -- see @initialCellsOfFiveTypes .
  * we have to initialize three types of cells:
  * first is Boundary (B),
  * second is FNM (F),
@@ -223,9 +225,266 @@ void SimulationDomainGPU::initialCellsOfThreeTypes(
 			j++;
 		}
 	}
+	// copy is active info to GPU
 	thrust::copy(isActive.begin(), isActive.end(), nodes.nodeIsActive.begin());
 
 	// set cell types
+	cells.setCellTypes(cellTypesToPass);
+}
+
+/**
+ * We have to initialize five types of cells:
+ * first is Boundary (B), fixed nodes on the boundary;
+ * second is Profile (P), Epithilum cells;
+ * third is ECM (E), extra-cellular matrix;
+ * fourth is FNM (F), front nasal mass;
+ * fifth is MX (M) maxillary cells.
+ *
+ * like this:
+ * B-B-B-B-B-B-B-B-B-P-P-P-P-E-E-E-E-F-F-F-F-F-F-F-F-M-M-M-M-M-M-M-M
+ * B, P and E is fixed. F and M will grow.
+ * Rules:
+ * 1a, Number of boundary nodes is fixed.
+ * 1b, Profile nodes may or may not increase. Still testing model.
+ *     however the space is always reserved for it, but some spaces are not active.
+ * 1c, Extra-cellular matrix will grow.
+ *     however the space is always reserved for it, but some spaces are not active.
+ * 1d, In F part, each input vector must be divided exactly by (max node per cell)
+ * 1e, In M part, each input vector must be divided exactly by (max node per cell)
+ * 2a, Sum of number of cells from all input vectors must be size of cellTypes
+ *     so that all cells will have its own type
+ * 2b, Read number of node per cell, etc, from config file.
+ * 3a, First part of this function is error checking.
+ * 3b, Second part of this function is the actual initialization
+ */
+void SimulationDomainGPU::initialCellsOfFiveTypes(
+		std::vector<CellType> &cellTypes,
+		std::vector<uint> &numOfInitActiveNodesOfCells,
+		std::vector<double> &initBdryCellNodePosX,
+		std::vector<double> &initBdryCellNodePosY,
+		std::vector<double> &initProfileNodePosX,
+		std::vector<double> &initProfileNodePosY,
+		std::vector<double> &initECMNodePosX,
+		std::vector<double> &initECMNodePosY,
+		std::vector<double> &initFNMCellNodePosX,
+		std::vector<double> &initFNMCellNodePosY,
+		std::vector<double> &initMXCellNodePosX,
+		std::vector<double> &initMXCellNodePosY) {
+
+	/*
+	 * zero step: redefine nodes.
+	 */
+	uint bdryNodeCount = initBdryCellNodePosX.size();
+	uint maxProfileNodeCount = initProfileNodePosX.size()
+			* FinalToInitProfileNodeCountRatio;
+
+	// redefine nodes using different constructor.
+	nodes = SceNodes(bdryNodeCount, maxProfileNodeCount, maxECMInDomain,
+			maxNodePerECM, maxCellInDomain, maxNodePerCell);
+	cells = SceCells(&nodes);
+
+	/*
+	 * first step: error checking.
+	 * we need to first check if inputs are valid
+	 */
+
+	cout << "begin init cells of five types" << endl;
+	// get max node per cell. should be defined previously.
+	uint maxNodePerCell = nodes.maxNodeOfOneCell;
+	// get max node per ECM. Should be defined previously.
+	uint maxNodePerECM = nodes.getMaxNodePerEcm();
+	// check if we successfully loaded maxNodePerCell
+	assert(maxNodePerCell != 0);
+
+	// obtain sizes of the input arrays
+	uint bdryNodeCountX = initBdryCellNodePosX.size();
+	uint bdryNodeCountY = initBdryCellNodePosY.size();
+	uint ProfileNodeCountX = initProfileNodePosX.size();
+	uint ProfileNodeCountY = initProfileNodePosY.size();
+	uint ECMNodeCountX = initECMNodePosX.size();
+	uint ECMNodeCountY = initECMNodePosY.size();
+	uint FNMNodeCountX = initFNMCellNodePosX.size();
+	uint FNMNodeCountY = initFNMCellNodePosY.size();
+	uint MXNodeCountX = initMXCellNodePosX.size();
+	uint MXNodeCountY = initMXCellNodePosY.size();
+
+	cout << "size of all node vectors:" << bdryNodeCountX << ", "
+			<< bdryNodeCountY << ", " << FNMNodeCountX << ", " << FNMNodeCountY
+			<< ", " << MXNodeCountX << ", " << MXNodeCountY << endl;
+
+	// array size of cell type array
+	uint cellTypeSize = cellTypes.size();
+	// array size of initial active node count of cells array.
+	uint initNodeCountSize = numOfInitActiveNodesOfCells.size();
+	// two sizes must match.
+	assert(cellTypeSize == initNodeCountSize);
+	// size of X and Y must match.
+	assert(bdryNodeCountX == bdryNodeCountY);
+	assert(ECMNodeCountX == ECMNodeCountY);
+	assert(ProfileNodeCountX == ProfileNodeCountY);
+	assert(FNMNodeCountX == FNMNodeCountY);
+	assert(MXNodeCountX == MXNodeCountY);
+
+	// size of inputs must be divided exactly by max node per cell.
+	// uint bdryRemainder = bdryNodeCountX % maxNodePerCell;
+	uint ecmRemainder = ECMNodeCountX % maxNodePerECM;
+	uint fnmRemainder = FNMNodeCountX % maxNodePerCell;
+	uint mxRemainder = MXNodeCountX % maxNodePerCell;
+
+	// uint bdryQuotient = bdryNodeCountX / maxNodePerCell;
+	uint ecmQuotient = ECMNodeCountX / maxNodePerECM;
+	uint fnmQuotient = FNMNodeCountX / maxNodePerCell;
+	uint mxQuotient = MXNodeCountX / maxNodePerCell;
+
+	// for now we try to make boundary cells one complete part so ....
+	uint bdryRemainder = 0;
+	uint bdryQuotient = 1;
+
+	// for now we try to make profile nodes one complete part soremdiner = 0 and quotient = 1
+	uint profileRemainder = 0;
+	uint profileQuotient = 1;
+
+	// remainder must be zero.
+	assert(
+			(bdryRemainder == 0) && (fnmRemainder == 0) && (mxRemainder == 0)
+					&& (ecmRemainder == 0) && (profileRemainder == 0));
+	// size of cellType array and sum of all cell types must match.
+	assert(
+			bdryQuotient + profileQuotient + ecmQuotient + fnmQuotient
+					+ mxQuotient == cellTypeSize);
+
+	// make sure the cell types follow format requirement.
+	// must follow sequence : B - P - E - F - M
+	int counter = 0;
+	CellType cellTypesForEachLevel[5] = { Boundary, Profile, Epith, FNM, MX };
+	int bounds[5];
+	bounds[0] = bdryQuotient;
+	bounds[1] = bounds[0] + profileQuotient;
+	bounds[2] = bounds[1] + ecmQuotient;
+	bounds[3] = bounds[2] + fnmQuotient;
+	bounds[4] = bounds[3] + mxQuotient;
+	int level = 0;
+	while (counter < cellTypeSize) {
+		// if count is already beyond the bound, we need to increase the current level.
+		if (counter == bounds[level]) {
+			level++;
+		}
+		// make sure that the input cell types array fits the calculated result.
+		assert(cellTypes[counter] == cellTypesForEachLevel[level]);
+		counter++;
+	}
+
+	/*
+	 * second part: actual initialization
+	 * copy data from main system memory to GPU memory
+	 */
+
+	nodes.setCurrentActiveCellCount(cellTypeSize);
+	cells.currentActiveCellCount = cellTypeSize;
+
+	// copy input of initial active node of cells to our actual data location
+	thrust::copy(numOfInitActiveNodesOfCells.begin(),
+			numOfInitActiveNodesOfCells.end(),
+			cells.activeNodeCountOfThisCell.begin());
+
+	// find the begining position of Profile.
+	uint beginAddressOfProfile = bdryNodeCountX;
+	// find the begining position of ECM.
+	uint beginAddressOfECM = beginAddressOfProfile + ProfileNodeCountX;
+	// find the begining position of FNM cells.
+	uint beginAddressOfFNM = beginAddressOfECM + ECMNodeCountX;
+	// find the begining position of MX cells.
+	uint beginAddressOfMX = beginAddressOfFNM + FNMNodeCountX;
+
+	// initialize the cell ranks and types
+	level = 0;
+	counter = 0;
+	int numOfCellEachLevel[] = { bdryQuotient, profileQuotient, ecmQuotient,
+			fnmQuotient, mxQuotient };
+	int nodesPerCellEachLevel[] = { bdryNodeCount, maxProfileNodeCount,
+			maxNodePerECM, maxNodePerCell, maxNodePerCell };
+	uint totalSize = nodes.nodeLocX.size();
+	thrust::host_vector<CellType> allNodeTypes;
+	thrust::host_vector<int> cellRanks;
+	allNodeTypes.resize(totalSize);
+	cellRanks.resize(totalSize);
+	int currentRank = 0;
+	while (counter < cellTypeSize) {
+		// if count is already beyond the bound, we need to increase the current level.
+		if (counter == bounds[level]) {
+			level++;
+		}
+		allNodeTypes[counter] = cellTypesForEachLevel[level];
+		if (level == 0) {
+			cellRanks[counter] = counter / nodesPerCellEachLevel[0];
+			currentRank = cellRanks[counter];
+		} else {
+			cellRanks[counter] = (counter - bounds[level - 1])
+					/ nodesPerCellEachLevel[level];
+		}
+		counter++;
+	}
+	// copy node rank and node type information to GPU
+	thrust::copy(allNodeTypes.begin(), allNodeTypes.end(),
+			nodes.nodeCellType.begin());
+	thrust::copy(cellRanks.begin(), cellRanks.end(),
+			nodes.nodeCellRank.begin());
+
+	// copy x and y position of nodes of boundary cells to actual node position.
+	thrust::copy(initBdryCellNodePosX.begin(), initBdryCellNodePosX.end(),
+			nodes.nodeLocX.begin());
+	thrust::copy(initBdryCellNodePosY.begin(), initBdryCellNodePosY.end(),
+			nodes.nodeLocY.begin());
+
+    // copy x and y position of nodes of Profile to actual node position.
+	thrust::copy(initProfileNodePosX.begin(), initProfileNodePosX.end(),
+			nodes.nodeLocX.begin() + beginAddressOfProfile);
+	thrust::copy(initProfileNodePosY.begin(), initProfileNodePosY.end(),
+			nodes.nodeLocY.begin() + beginAddressOfProfile);
+
+    // copy x and y position of nodes of ECM to actual node position.
+	thrust::copy(initECMNodePosX.begin(), initFNMCellNodePosX.end(),
+			nodes.nodeLocX.begin() + beginAddressOfECM);
+	thrust::copy(initECMNodePosY.begin(), initFNMCellNodePosY.end(),
+			nodes.nodeLocY.begin() + beginAddressOfECM);
+
+    // copy x and y position of nodes of FNM cells to actual node position.
+	thrust::copy(initFNMCellNodePosX.begin(), initFNMCellNodePosX.end(),
+			nodes.nodeLocX.begin() + beginAddressOfFNM);
+	thrust::copy(initFNMCellNodePosY.begin(), initFNMCellNodePosY.end(),
+			nodes.nodeLocY.begin() + beginAddressOfFNM);
+
+    // copy x and y position of nodes of MX cells to actual node position.
+	thrust::copy(initMXCellNodePosX.begin(), initMXCellNodePosX.end(),
+			nodes.nodeLocX.begin() + beginAddressOfMX);
+	thrust::copy(initMXCellNodePosY.begin(), initMXCellNodePosY.end(),
+			nodes.nodeLocY.begin() + beginAddressOfMX);
+
+    // set cell types
+	thrust::device_vector<CellType> cellTypesToPass = cellTypes;
+
+    // copy initial active node count info to GPU
+	thrust::copy(numOfInitActiveNodesOfCells.begin(),
+			numOfInitActiveNodesOfCells.end(),
+			cells.activeNodeCountOfThisCell.begin());
+    // set isActiveInfo
+    // allocate space for isActive info
+	uint sizeOfTmpVector = maxNodePerCell * initNodeCountSize;
+	thrust::host_vector<bool> isActive(sizeOfTmpVector, false);
+
+	for (int i = 0; i < initNodeCountSize; i++) {
+		int j = 0;
+		int index;
+		while (j < numOfInitActiveNodesOfCells[i]) {
+			index = i * maxNodePerCell + j;
+			isActive[index] = true;
+			j++;
+		}
+	}
+// copy is active info to GPU
+	thrust::copy(isActive.begin(), isActive.end(), nodes.nodeIsActive.begin());
+
+// set cell types
 	cells.setCellTypes(cellTypesToPass);
 }
 
@@ -267,10 +526,10 @@ void SimulationDomainGPU::initializeCells(std::vector<double> initCellNodePosX,
 		}
 	}
 
-	// active cell count includes cell spaces that are reserved for boundary.
+// active cell count includes cell spaces that are reserved for boundary.
 	nodes.setCurrentActiveCellCount(numberOfInitActiveCells);
 	cells.currentActiveCellCount = numberOfInitActiveCells;
-	// cell space for boundary means number of cell spaces that are reserved for bdry.
+// cell space for boundary means number of cell spaces that are reserved for bdry.
 	nodes.setCellSpaceForBdry(cellSpaceForBdry);
 	cells.setCellSpaceForBdry(cellSpaceForBdry);
 	thrust::host_vector<uint> cellActiveNodeCounts(numberOfInitActiveCells,
@@ -283,24 +542,13 @@ void SimulationDomainGPU::initializeCells(std::vector<double> initCellNodePosX,
 
 }
 
-/**
- * cell types need to initialized.
- * Seperated from initializeCells function.
- */
-void SimulationDomainGPU::initializeCellTypes(std::vector<CellType> cellTypes) {
-	uint cellTypeInputSize = cellTypes.size();
-	assert(cells.currentActiveCellCount == cellTypeInputSize);
-	thrust::device_vector<CellType> cellTypesToPass = cellTypes;
-	cells.setCellTypes(cellTypesToPass);
-}
-
 void SimulationDomainGPU::runAllLogic(double dt) {
 	nodes.calculateAndApplySceForces(minX, maxX, minY, maxY, gridSpacing);
 //nodes.move(dt);
-	//cells.growAndDivide(dt, growthMap.growthFactorMag,
-	//		growthMap.growthFactorDirXComp, growthMap.growthFactorDirYComp,
-	//		growthMap.gridDimensionX, growthMap.gridDimensionY,
-	//		growthMap.gridSpacing);
+//cells.growAndDivide(dt, growthMap.growthFactorMag,
+//		growthMap.growthFactorDirXComp, growthMap.growthFactorDirYComp,
+//		growthMap.gridDimensionX, growthMap.gridDimensionY,
+//		growthMap.gridSpacing);
 	cells.growAndDivide(dt, growthMap, growthMap2);
 }
 
@@ -350,6 +598,12 @@ void SimulationDomainGPU::outputVtkFilesWithColor(std::string scriptNameBase,
 		prefixSum[i] = tmpRes;
 		tmpRes = tmpRes + hostActiveCountOfCells[i];
 	}
+
+	thrust::host_vector<CellType> cellTypesFromGPU = cells.getCellTypes();
+	cout << "size of cellTypes from GPU is " << cellTypesFromGPU.size()
+			<< ", size of currentActiveCellCount is"
+			<< nodes.currentActiveCellCount << endl;
+//assert(cellTypesFromGPU.size() == nodes.currentActiveCellCount);
 // using string stream is probably not the best solution,
 // but I can't use c++ 11 features for backward compatibility
 	std::stringstream ss;
@@ -421,13 +675,33 @@ void SimulationDomainGPU::outputVtkFilesWithColor(std::string scriptNameBase,
 	fs << "POINT_DATA " << totalNNum << endl;
 	fs << "SCALARS point_scalars float" << endl;
 	fs << "LOOKUP_TABLE default" << endl;
+
+//for (i = 0; i < nodes.currentActiveCellCount; i++) {
+//	uint activeNodeCount = hostActiveCountOfCells[i];
+//	for (j = 0; j < activeNodeCount; j++) {
+//		fs << i << endl;
+//	}
+//}
+
 	for (i = 0; i < nodes.currentActiveCellCount; i++) {
 		uint activeNodeCount = hostActiveCountOfCells[i];
-		for (j = 0; j < activeNodeCount; j++) {
-			fs << i << endl;
+		if (cellTypesFromGPU[i] == Boundary) {
+			for (j = 0; j < activeNodeCount; j++) {
+				fs << 1 << endl;
+			}
+		} else if (cellTypesFromGPU[i] == FNM) {
+			for (j = 0; j < activeNodeCount; j++) {
+				fs << 2 << endl;
+			}
+		} else if (cellTypesFromGPU[i] == MX) {
+			for (j = 0; j < activeNodeCount; j++) {
+				fs << 3 << endl;
+			}
 		}
+
 	}
 
 	fs.flush();
 	fs.close();
 }
+

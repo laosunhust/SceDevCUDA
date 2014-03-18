@@ -33,7 +33,8 @@ void CellInitHelper::initPrecisionBoundaryPoints() {
 	CVector P10(337, 257, 0);
 	CVector P11(346, 250, 0);
 	CVector P12(276, 56, 0);
-	CVector P13(292, 264, 0);
+	//CVector P13(292, 264, 0);
+	CVector P13(305,275,0);
 	CVector P14(271, 207, 0);
 	CVector P15(249, 97, 0);
 	initPoints.clear();
@@ -404,7 +405,7 @@ bool CellInitHelper::isMXType(CVector position) {
 	if (position.y >= initPoints[2].y) {
 		return false;
 	}
-	if (position.x >= initPoints[13].x) {
+	if (position.x >= initPoints[12].x) {
 		return false;
 	}
 	for (unsigned int i = 0; i < internalBoundaryLines.size(); i++) {
@@ -569,8 +570,8 @@ void CellInitHelper::initInputsFromCellInfoArray(vector<CellType> &cellTypes,
 	cout << "size of initBdryCellNodePos = " << initBdryCellNodePosX.size()
 			<< endl;
 
-	int jj;
-	cin>>jj;
+	//int jj;
+	//cin>>jj;
 
 	for (uint i = 0; i < bdryNodes.size(); i++) {
 		initBdryCellNodePosX[i] = bdryNodes[i].x;

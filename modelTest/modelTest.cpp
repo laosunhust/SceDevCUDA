@@ -33,6 +33,9 @@ void generateStringInputs(std::string &loadMeshInput,
 	boundaryMeshFileNames.push_back(boundaryMeshInput);
 }
 
+/**
+ * Generate cell init
+ */
 void generateCellInitNodeInfo(std::string meshInput, vector<CVector> &initPos) {
 	fstream fs;
 	uint NNum, LNum, ENum;
@@ -61,6 +64,7 @@ void generateCellInitNodeInfo(std::string meshInput, vector<CVector> &initPos) {
 }
 
 /**
+ * Depreciated -- Previous test input setup.
  * This method is highly not robust and is for test purpose only.
  * This method assumes that the size of the computation domain
  * is 50 X 50 and left bottom point is (0,0). it initializes cells of a vertical line.
@@ -227,38 +231,13 @@ int main() {
 			initBdryCellNodePosX, initBdryCellNodePosY, initFNMCellNodePosX,
 			initFNMCellNodePosY, initMXCellNodePosX, initMXCellNodePosY,
 			bdryNodes, FNMCellCenters, MXCellCenters, initNodePosFromMesh);
-	/*
-	 */
 
-	//int jj;
-	//cin >> jj;
-	//for (int i = 0; i < cellInfoArray.size(); i++) {
-	//	cout << cellInfoArray[i].centerLocation << " , "
-	//			<< cellInfoArray[i].cellType << endl;
-	//}
-	//cin >> jj;
-	//cout << "before simulation domain object created" << endl;
-	//cout << "size of bdry Cell: " << initBdryCellNodePosX.size() << endl;
 	SimulationDomainGPU simuDomain;
-	//cout << "simulation domain object created" << endl;
-// following code block is not used due to newer version of initialize cells.
-	/*
-	 uint numberOfInitCells = globalConfigVars.getConfigValue(
-	 "NumberOfInitCells").toInt();
-	 uint numberOfCellSpaceReserveForBdry = globalConfigVars.getConfigValue(
-	 "NumberOfCellSpaceReserveForBdry").toInt();
-	 generateCellInitInfo(loadMeshInput, numberOfInitCells, initCellNodePosX,
-	 initCellNodePosY, centerPosX, centerPosY);
-	 std::cout << "finished generate cell info" << std::endl;
-	 std::vector<CellType> initTypes(numberOfInitCells);
-	 for (uint i = 0; i < numberOfInitCells; i++) {
-	 initTypes[i] = Boundary;
-	 }
-	 */
-// This is the previous version of cell initialization. depreciated.
-//simuDomain.initializeCells(initCellNodePosX, initCellNodePosY, centerPosX,
-//		centerPosY, numberOfCellSpaceReserveForBdry);
-//simuDomain.initializeCellTypes(initTypes);
+
+	// This is the previous version of cell initialization. depreciated.
+	//simuDomain.initializeCells(initCellNodePosX, initCellNodePosY, centerPosX,
+	//		centerPosY, numberOfCellSpaceReserveForBdry);
+	//simuDomain.initializeCellTypes(initTypes);
 
 	simuDomain.initialCellsOfThreeTypes(cellTypes, numOfInitNodesOfCells,
 			initBdryCellNodePosX, initBdryCellNodePosY, initFNMCellNodePosX,
@@ -289,7 +268,6 @@ int main() {
 		//	cout << "Is scheduled to grow?" << cellIsCheduledToGrow << endl;
 		//	cout << "last check point is " << lastCheckPoint << endl;
 		//}
-
 	}
 
 }

@@ -5,6 +5,9 @@ __constant__ double sceIntraPara[4];
 double sceInterParaCPU[5];
 double sceIntraParaCPU[4];
 
+__constant__ double sceDiffPara[5];
+double sceDiffParaCPU[5];
+
 // This template method expands an input sequence by
 // replicating each element a variable number of times. For example,
 //
@@ -168,7 +171,7 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell,
 	std::cout << "before resizing vectors" << std::endl;
 	uint maxTotalNodeCount = maxTotalCellNodeCount + maxTotalECMNodeCount;
 	std::cout << "maxTotalNodeCount = " << maxTotalNodeCount << std::endl;
-	//thrust::host_vector<bool> nodeIsActiveHost;
+	//thrust::host_vector<bool> nodeIsActiveHost
 	nodeIsActive.resize(maxTotalNodeCount);
 	std::cout << "nodeIsActive resize complete" << std::endl;
 	nodeLocX.resize(maxTotalNodeCount);
@@ -178,6 +181,107 @@ SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell,
 	nodeVelY.resize(maxTotalNodeCount);
 	nodeVelZ.resize(maxTotalNodeCount);
 	std::cout << "after resizing vectors" << std::endl;
+	//thrust::counting_iterator<uint> countingBegin(0);
+	//thrust::counting_iterator<uint> countingEnd(maxTotalNodeCount);
+
+	// following block of code is depreciated due to a simplification of node global notation
+	//thrust::transform(
+	//		make_zip_iterator(
+	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
+	//						countingBegin)),
+	//		make_zip_iterator(
+	//				make_tuple(cellRanks.end(), nodeRanks.end(), countingEnd)),
+	//		make_zip_iterator(
+	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
+	//						countingBegin)), InitFunctor(maxCellCount));
+
+	//ConfigParser parser;
+	//std::string configFileName = "sceCell.config";
+	// globalConfigVars should be a global variable and defined in the main function.
+	//globalConfigVars = parser.parseConfigFile(configFileName);
+	static const double U0 =
+			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
+					/ globalConfigVars.getConfigValue("InterCell_U0_DivFactor").toDouble();
+	static const double V0 =
+			globalConfigVars.getConfigValue("InterCell_V0_Original").toDouble()
+					/ globalConfigVars.getConfigValue("InterCell_V0_DivFactor").toDouble();
+	static const double k1 =
+			globalConfigVars.getConfigValue("InterCell_k1_Original").toDouble()
+					/ globalConfigVars.getConfigValue("InterCell_k1_DivFactor").toDouble();
+	static const double k2 =
+			globalConfigVars.getConfigValue("InterCell_k2_Original").toDouble()
+					/ globalConfigVars.getConfigValue("InterCell_k2_DivFactor").toDouble();
+	static const double interLinkEffectiveRange =
+			globalConfigVars.getConfigValue("InterCellLinkBreakRange").toDouble();
+
+	sceInterParaCPU[0] = U0;
+	sceInterParaCPU[1] = V0;
+	sceInterParaCPU[2] = k1;
+	sceInterParaCPU[3] = k2;
+	sceInterParaCPU[4] = interLinkEffectiveRange;
+
+	static const double U0_Intra =
+			globalConfigVars.getConfigValue("IntraCell_U0_Original").toDouble()
+					/ globalConfigVars.getConfigValue("IntraCell_U0_DivFactor").toDouble();
+	static const double V0_Intra =
+			globalConfigVars.getConfigValue("IntraCell_V0_Original").toDouble()
+					/ globalConfigVars.getConfigValue("IntraCell_V0_DivFactor").toDouble();
+	static const double k1_Intra =
+			globalConfigVars.getConfigValue("IntraCell_k1_Original").toDouble()
+					/ globalConfigVars.getConfigValue("IntraCell_k1_DivFactor").toDouble();
+	static const double k2_Intra =
+			globalConfigVars.getConfigValue("IntraCell_k2_Original").toDouble()
+					/ globalConfigVars.getConfigValue("IntraCell_k2_DivFactor").toDouble();
+	sceIntraParaCPU[0] = U0_Intra;
+	sceIntraParaCPU[1] = V0_Intra;
+	sceIntraParaCPU[2] = k1_Intra;
+	sceIntraParaCPU[3] = k2_Intra;
+
+	std::cout << "in SceNodes, before cuda memory copy to symbol:" << std::endl;
+	cudaMemcpyToSymbol(sceInterPara, sceInterParaCPU, 5 * sizeof(double));
+	cudaMemcpyToSymbol(sceIntraPara, sceIntraParaCPU, 4 * sizeof(double));
+	std::cout << "finished SceNodes:" << std::endl;
+}
+
+SceNodes::SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
+		uint maxTotalECMCount, uint maxNodeInECM, uint maxTotalCellCount,
+		uint maxNodeInCell) {
+	std::cout << "start creating SceNodes object" << std::endl;
+	maxCellCount = maxTotalCellCount;
+	maxNodeOfOneCell = maxNodeInCell;
+	maxNodePerECM = maxNodeInECM;
+	maxECMCount = maxTotalECMCount;
+	currentActiveCellCount = 0;
+	// for now it is initialized as 3.
+	// maxNodePerECM = 3;
+	// for now it is initialized as 0.
+	// maxECMCount = 0;
+	maxTotalECMNodeCount = maxECMCount * maxNodePerECM;
+	currentActiveECM = 0;
+
+	// will need to change this value after we have more detail about ECM
+	maxTotalCellNodeCount = maxTotalCellCount * maxNodeOfOneCell;
+
+	//cellRanks.resize(maxTotalNodeCount);
+	//nodeRanks.resize(maxTotalNodeCount);
+	std::cout << "before resizing vectors" << std::endl;
+	uint maxTotalNodeCount = totalBdryNodeCount + maxProfileNodeCount
+			+ maxTotalECMNodeCount + maxTotalCellNodeCount;
+	std::cout << "maxTotalNodeCount = " << maxTotalNodeCount << std::endl;
+	//thrust::host_vector<bool> nodeIsActiveHost
+
+	nodeLocX.resize(maxTotalNodeCount);
+	nodeLocY.resize(maxTotalNodeCount);
+	nodeLocZ.resize(maxTotalNodeCount);
+	nodeVelX.resize(maxTotalNodeCount);
+	nodeVelY.resize(maxTotalNodeCount);
+	nodeVelZ.resize(maxTotalNodeCount);
+	nodeCellType.resize(maxTotalNodeCount);
+	nodeCellRank.resize(maxTotalNodeCount);
+	nodeIsActive.resize(maxTotalNodeCount);
+	// std::cout << "nodeIsActive resize complete" << std::endl;
+
+	// std::cout << "after resizing vectors" << std::endl;
 	//thrust::counting_iterator<uint> countingBegin(0);
 	//thrust::counting_iterator<uint> countingEnd(maxTotalNodeCount);
 
@@ -362,7 +466,8 @@ void calculateAndAddInterForce(double &xPos, double &yPos, double &zPos,
 				+ sceInterPara[1] / sceInterPara[3]
 						* exp(-linkLength / sceInterPara[3]);
 		if (forceValue > 0) {
-			forceValue = 0;
+			//forceValue = 0;
+			forceValue = forceValue * 0.3;
 		}
 	}
 	if (linkLength > 1.0e-12) {
@@ -371,6 +476,31 @@ void calculateAndAddInterForce(double &xPos, double &yPos, double &zPos,
 		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
 	}
 
+}
+
+__device__
+void calculateAndAddInterForceDiffType(double &xPos, double &yPos, double &zPos,
+		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
+		double &zRes) {
+	double linkLength = computeDist(xPos, yPos, zPos, xPos2, yPos2, zPos2);
+	double forceValue = 0;
+	if (linkLength > sceInterPara[4]) {
+		forceValue = 0;
+	} else {
+		forceValue = -sceInterPara[0] / sceInterPara[2]
+				* exp(-linkLength / sceInterPara[2])
+				+ sceInterPara[1] / sceInterPara[3]
+						* exp(-linkLength / sceInterPara[3]);
+		if (forceValue > 0) {
+			//forceValue = 0;
+			forceValue = forceValue * 0.3;
+		}
+	}
+	if (linkLength > 1.0e-12) {
+		xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
+		yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
+		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
+	}
 }
 
 __device__
@@ -416,6 +546,14 @@ __device__ bool isSameCell(uint nodeGlobalRank1, uint nodeGlobalRank2,
 		uint nodeCountPerCell) {
 	if (nodeGlobalRank1 / nodeCountPerCell
 			== nodeGlobalRank2 / nodeCountPerCell) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+__device__ bool ofSameType(uint cellType1, uint cellType2) {
+	if (cellType1 == cellType2) {
 		return true;
 	} else {
 		return false;

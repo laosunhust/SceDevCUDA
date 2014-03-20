@@ -235,60 +235,6 @@ TEST(SceNodeConstructor, initTest) {
 	//}
 }
 
-TEST(SceNodeFunction, moveTest) {
-	cudaSetDevice(myDeviceId);
-	SceNodes nodes(maxCellCount, maxNodePerCell);
-	thrust::host_vector<double> nodeLocXHost(maxNodeCount);
-	thrust::host_vector<double> nodeLocYHost(maxNodeCount);
-	thrust::host_vector<double> nodeLocZHost(maxNodeCount);
-	thrust::host_vector<double> nodeVelXHost(maxNodeCount);
-	thrust::host_vector<double> nodeVelYHost(maxNodeCount);
-	thrust::host_vector<double> nodeVelZHost(maxNodeCount);
-	thrust::counting_iterator<unsigned int> index_sequence_begin(0);
-	thrust::transform(index_sequence_begin, index_sequence_begin + maxNodeCount,
-			nodeLocXHost.begin(), Prg());
-	thrust::transform(index_sequence_begin, index_sequence_begin + maxNodeCount,
-			nodeLocYHost.begin(), Prg());
-	thrust::transform(index_sequence_begin, index_sequence_begin + maxNodeCount,
-			nodeLocZHost.begin(), Prg());
-	thrust::transform(index_sequence_begin, index_sequence_begin + maxNodeCount,
-			nodeVelXHost.begin(), Prg());
-	thrust::transform(index_sequence_begin, index_sequence_begin + maxNodeCount,
-			nodeVelYHost.begin(), Prg());
-	thrust::transform(index_sequence_begin, index_sequence_begin + maxNodeCount,
-			nodeVelZHost.begin(), Prg());
-
-	nodes.nodeLocX = nodeLocXHost;
-	nodes.nodeLocY = nodeLocYHost;
-	nodes.nodeLocZ = nodeLocZHost;
-	nodes.nodeVelX = nodeVelXHost;
-	nodes.nodeVelY = nodeVelYHost;
-	nodes.nodeVelZ = nodeVelZHost;
-	nodes.move(dt);
-
-	thrust::host_vector<double> nodeLocXComputeFromHost(maxNodeCount);
-	thrust::host_vector<double> nodeLocYComputeFromHost(maxNodeCount);
-	thrust::host_vector<double> nodeLocZComputeFromHost(maxNodeCount);
-
-	for (uint i = 0; i < maxNodeCount; i++) {
-		nodeLocXComputeFromHost[i] = nodeLocXHost[i] + dt * nodeVelXHost[i];
-		nodeLocYComputeFromHost[i] = nodeLocYHost[i] + dt * nodeVelYHost[i];
-		nodeLocZComputeFromHost[i] = nodeLocZHost[i] + dt * nodeVelZHost[i];
-	}
-	thrust::host_vector<double> nodeLocXComputeFromDevice = nodes.nodeLocX;
-	thrust::host_vector<double> nodeLocYComputeFromDevice = nodes.nodeLocY;
-	thrust::host_vector<double> nodeLocZComputeFromDevice = nodes.nodeLocZ;
-
-	for (uint i = 0; i < maxNodeCount; i++) {
-		EXPECT_NEAR(nodeLocXComputeFromHost[i], nodeLocXComputeFromDevice[i],
-				errTol);
-		EXPECT_NEAR(nodeLocYComputeFromHost[i], nodeLocYComputeFromDevice[i],
-				errTol);
-		EXPECT_NEAR(nodeLocZComputeFromHost[i], nodeLocZComputeFromDevice[i],
-				errTol);
-	}
-}
-
 TEST(SceBuildBucket2D, putBucketfixedTest) {
 	cudaSetDevice(myDeviceId);
 	const uint testCellCount = 2;

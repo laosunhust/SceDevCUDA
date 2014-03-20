@@ -356,7 +356,7 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	// make sure the cell types follow format requirement.
 	// must follow sequence : B - P - E - F - M
 	int counter = 0;
-	CellType cellTypesForEachLevel[5] = { Boundary, Profile, Epith, FNM, MX };
+	CellType cellTypesForEachLevel[5] = { Boundary, Profile, ECM, FNM, MX };
 	int bounds[5];
 	bounds[0] = bdryQuotient;
 	bounds[1] = bounds[0] + profileQuotient;

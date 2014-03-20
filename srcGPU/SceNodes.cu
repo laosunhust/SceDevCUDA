@@ -8,6 +8,12 @@ double sceIntraParaCPU[4];
 __constant__ double sceDiffPara[5];
 double sceDiffParaCPU[5];
 
+//TODO: initialize value for these four
+__constant__ uint cellNodeBeginAddress;
+__constant__ uint nodeCountPerCell;
+__constant__ uint ECMbeginAddress;
+__constant__ uint nodeCountPerECM;
+
 // This template method expands an input sequence by
 // replicating each element a variable number of times. For example,
 //
@@ -402,6 +408,8 @@ void SceNodes::addNewlyDividedCells(
 void SceNodes::buildBuckets2D(double minX, double maxX, double minY,
 		double maxY, double bucketSize) {
 	int totalActiveNodes = currentActiveCellCount * maxNodeOfOneCell;
+
+	// TODO: change number of total active nodes
 //std::cout << "total number of active nodes:" << totalActiveNodes
 //		<< std::endl;
 	bucketKeys.resize(totalActiveNodes);
@@ -448,6 +456,12 @@ double computeDist(double &xPos, double &yPos, double &zPos, double &xPos2,
 
 __device__
 void calculateAndAddECMForce(double &xPos, double &yPos, double &zPos,
+		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
+		double &zRes) {
+}
+
+__device__
+void calculateAndAddProfileForce(double &xPos, double &yPos, double &zPos,
 		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
 		double &zRes) {
 }
@@ -517,19 +531,6 @@ void calculateAndAddIntraForce(double &xPos, double &yPos, double &zPos,
 		yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
 		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
 	}
-
-//xRes = xRes + (xPos2 - xPos);
-//yRes = yRes + (yPos2 - yPos);
-//zRes = zRes + (zPos2 - zPos);
-//xRes = xRes + 1.0;
-//yRes = yRes + 2.0;
-//zRes = zRes + 3.0;
-//xRes = xRes + forceValue;
-//yRes = yRes + forceValue;
-//zRes = zRes + forceValue;
-//xRes = xRes + xPos;
-//yRes = yRes + yPos;
-//zRes = zRes + zPos;
 }
 
 __device__ bool bothNodesCellNode(uint nodeGlobalRank1, uint nodeGlobalRank2,
@@ -552,11 +553,106 @@ __device__ bool isSameCell(uint nodeGlobalRank1, uint nodeGlobalRank2,
 	}
 }
 
+__device__ bool isSameCell(uint nodeGlobalRank1, uint nodeGlobalRank2) {
+	if ((nodeGlobalRank1 - cellNodeBeginAddress) / nodeCountPerCell
+			== (nodeGlobalRank2 - cellNodeBeginAddress) / nodeCountPerCell) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+__device__ bool isNeighborECMNodes(uint nodeGlobalRank1, uint nodeGlobalRank2) {
+	// this means that two nodes are from the same ECM
+	if ((nodeGlobalRank1 - ECMbeginAddress) / nodeCountPerECM
+			== (nodeGlobalRank2 - ECMbeginAddress) / nodeCountPerECM) {
+		// this means that two nodes are actually close to each other
+		// seems to be strange because of unsigned int.
+		if ((nodeGlobalRank1 > nodeGlobalRank2
+				&& nodeGlobalRank1 - nodeGlobalRank2 == 1)
+				|| (nodeGlobalRank2 > nodeGlobalRank1
+						&& nodeGlobalRank2 - nodeGlobalRank1 == 1)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+__device__ bool isNeighborProfileNodes(uint nodeGlobalRank1,
+		uint nodeGlobalRank2) {
+	if ((nodeGlobalRank1 > nodeGlobalRank2
+			&& nodeGlobalRank1 - nodeGlobalRank2 == 1)
+			|| (nodeGlobalRank2 > nodeGlobalRank1
+					&& nodeGlobalRank2 - nodeGlobalRank1 == 1)) {
+		return true;
+	}
+	return false;
+}
+
 __device__ bool ofSameType(uint cellType1, uint cellType2) {
 	if (cellType1 == cellType2) {
 		return true;
 	} else {
 		return false;
+	}
+}
+
+__device__
+void handleForceBetweenNodes(uint &nodeRank1, CellType &type1, uint &nodeRank2,
+		CellType &type2, double &xPos, double &yPos, double &zPos,
+		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
+		double &zRes, double* _nodeLocXAddress, double* _nodeLocYAddress,
+		double* _nodeLocZAddress) {
+	// this means that both nodes come from cells
+	if ((type1 == MX || type1 == FNM) && (type2 == MX || type2 == FNM)) {
+		// this means that nodes come from different type of cell, apply differential adhesion
+		if (type1 != type2) {
+			// TODO: apply differential adhesion here.
+			// It should be a different type of inter force.
+			calculateAndAddInterForce(xPos, yPos, zPos,
+					_nodeLocXAddress[nodeRank2], _nodeLocYAddress[nodeRank2],
+					_nodeLocZAddress[nodeRank2], xRes, yRes, zRes);
+		} else {
+			// TODO: this function needs to be modified.
+			// (1) nodeCountPerCell need to be stored in constant memory.
+			// (2) begin address of cell nodes need to be stored in constant memory.
+			if (isSameCell(nodeRank1, nodeRank2)) {
+				calculateAndAddIntraForce(xPos, yPos, zPos,
+						_nodeLocXAddress[nodeRank2],
+						_nodeLocYAddress[nodeRank2],
+						_nodeLocZAddress[nodeRank2], xRes, yRes, zRes);
+			} else {
+				calculateAndAddInterForce(xPos, yPos, zPos,
+						_nodeLocXAddress[nodeRank2],
+						_nodeLocYAddress[nodeRank2],
+						_nodeLocZAddress[nodeRank2], xRes, yRes, zRes);
+			}
+		}
+	}
+	// this means that both nodes come from ECM
+	else if (type1 == ECM && type2 == ECM
+			&& isNeighborECMNodes(nodeRank1, nodeRank2)) {
+		// TODO: need to create another two vectors that holds the neighbor information for ECM.
+		// TODO: alternatively, try to store ECM begin address and number of node per ECM in constant memory.
+		// TODO: implement this function.
+		calculateAndAddECMForce(xPos, yPos, zPos, _nodeLocXAddress[nodeRank2],
+				_nodeLocYAddress[nodeRank2], _nodeLocZAddress[nodeRank2], xRes,
+				yRes, zRes);
+	}
+	// this means that both nodes come from profile ( Epithilum layer).
+	else if (type1 == Profile && type2 == Profile) {
+		if (isNeighborProfileNodes(nodeRank1, nodeRank2)) {
+			// TODO: need a set of parameters for calculating linking force between profile nodes
+			// TODO: implement this function.
+			calculateAndAddProfileForce(xPos, yPos, zPos,
+					_nodeLocXAddress[nodeRank2], _nodeLocYAddress[nodeRank2],
+					_nodeLocZAddress[nodeRank2], xRes, yRes, zRes);
+		}
+	} else {
+		// for now, we assume that interaction between other nodes are the same as inter-cell force.
+		calculateAndAddInterForce(xPos, yPos, zPos, _nodeLocXAddress[nodeRank2],
+				_nodeLocYAddress[nodeRank2], _nodeLocZAddress[nodeRank2], xRes,
+				yRes, zRes);
 	}
 }
 
@@ -634,30 +730,11 @@ void SceNodes::applySceForces(uint numOfBucketsInXDim,
 	uint* valueAddress = thrust::raw_pointer_cast(
 			&bucketValuesIncludingNeighbor[0]);
 
-	thrust::host_vector<uint> keyBeginFromGPU = keyBegin;
-	thrust::host_vector<uint> keyEndFromGPU = keyEnd;
-	thrust::host_vector<uint> bucketKeysFromGPU = bucketKeys;
-//for (uint i = 0; i < keyBeginFromGPU.size(); i++) {
-//	std::cout << "key begin: " << keyBeginFromGPU[i] << "key end:"
-//			<< keyEndFromGPU[i] << std::endl;
-//}
-
-//for (uint i = 0; i < bucketKeysFromGPU.size(); i++) {
-//	std::cout << "bucket key: " << bucketKeysFromGPU[i] << std::endl;
-//}
-
-	thrust::host_vector<double> xTmpVel = nodeVelX;
-	for (uint i = 0; i < xTmpVel.size(); i++) {
-		if (isnan(xTmpVel[i])) {
-			std::cout << "Velocity nan detected before apply sceForces"
-					<< std::endl;
-			exit(0);
-		}
-	}
-
 	double* nodeLocXAddress = thrust::raw_pointer_cast(&nodeLocX[0]);
 	double* nodeLocYAddress = thrust::raw_pointer_cast(&nodeLocY[0]);
 	double* nodeLocZAddress = thrust::raw_pointer_cast(&nodeLocZ[0]);
+	uint* nodeRankAddress = thrust::raw_pointer_cast(&nodeCellRank[0]);
+	CellType* nodeTypeAddress = thrust::raw_pointer_cast(&nodeCellType[0]);
 	thrust::transform(
 			make_zip_iterator(
 					make_tuple(
@@ -692,24 +769,8 @@ void SceNodes::applySceForces(uint numOfBucketsInXDim,
 							make_permutation_iterator(nodeVelZ.begin(),
 									bucketValues.begin()))),
 			AddSceForce(valueAddress, nodeLocXAddress, nodeLocYAddress,
-					nodeLocZAddress, maxTotalCellNodeCount, maxNodeOfOneCell,
-					maxNodePerECM));
-	xTmpVel = nodeVelX;
-	for (uint i = 0; i < xTmpVel.size(); i++) {
-		if (isnan(xTmpVel[i])) {
-			std::cout << "Velocity nan detected after apply sceForces"
-					<< std::endl;
-			std::cout << "cell rank :" << i / maxNodeOfOneCell << std::endl;
-			thrust::host_vector<double> tempX = nodeLocX;
-			for (uint j = 0; j < tempX.size(); j++) {
-				if (isnan(tempX[j])) {
-					std::cout << "unexpected loc nan" << std::endl;
-				}
-			}
-			exit(0);
-		}
-	}
-
+					nodeLocZAddress, nodeRankAddress, nodeTypeAddress,
+					maxTotalCellNodeCount, maxNodeOfOneCell, maxNodePerECM));
 }
 
 void SceNodes::calculateAndApplySceForces(double minX, double maxX, double minY,
@@ -723,247 +784,4 @@ void SceNodes::calculateAndApplySceForces(double minX, double maxX, double minY,
 	std::cout << "in SceNodes, before apply sce forces:" << std::endl;
 	applySceForces(numberOfBucketsInXDim, numberOfBucketsInYDim);
 }
-/*
- void SceNodes::buildPairsFromBucketsAndExtendedBuckets(uint numOfBucketsInXDim,
- uint numOfBucketsInYDim) {
- uint totalBucketCount = numOfBucketsInXDim * numOfBucketsInYDim;
- // "+1" to avoid potential bug when all buckets are occupied
- thrust::device_vector<uint> tmpBucketKeys(totalBucketCount + 1, UINT_MAX);
- thrust::device_vector<uint> tmpBucketValues(totalBucketCount + 1, UINT_MAX);
 
- thrust::device_vector<uint> tmpExtendedBucketKeys(totalBucketCount + 1,
- UINT_MAX);
- thrust::device_vector<uint> tmpExtendedBucketValues(totalBucketCount + 1,
- UINT_MAX);
-
- //thrust::counting_iterator<uint> countBegin(0);
- //thrust::counting_iterator<uint> countEnd = countBegin + bucketKeys.size();
- thrust::reduce_by_key(bucketKeys.begin(), bucketKeys.end(),
- thrust::constant_iterator < uint > (1), tmpBucketKeys.begin(),
- tmpBucketValues.begin());
- // keep those unique values. reason of "-1" is that we have all numbers initialized as UINT_MAX
- tmpBucketKeys.erase(
- thrust::unique(tmpBucketKeys.begin(), tmpBucketKeys.end()) - 1,
- tmpBucketKeys.end());
- int keySize = tmpBucketKeys.size();
- tmpBucketValues.erase(tmpBucketValues.begin() + keySize,
- tmpBucketValues.end());
-
- thrust::reduce_by_key(bucketKeysExpanded.begin(), bucketKeysExpanded.end(),
- thrust::constant_iterator < uint > (1),
- tmpExtendedBucketKeys.begin(), tmpExtendedBucketValues.begin());
- // keep those unique values. reason of "-1" is that we have all numbers initialized as UINT_MAX
- tmpExtendedBucketKeys.erase(
- thrust::unique(tmpExtendedBucketKeys.begin(),
- tmpExtendedBucketKeys.end()) - 1,
- tmpExtendedBucketKeys.end());
- int extendedKeySize = tmpExtendedBucketKeys.size();
- tmpExtendedBucketValues.erase(
- tmpExtendedBucketValues.begin() + extendedKeySize,
- tmpExtendedBucketValues.end());
-
- thrust::host_vector<uint> hostKeysDEBUG = tmpBucketKeys;
- thrust::host_vector<uint> hostValuesDEBUG = tmpBucketValues;
- for (uint i = 0; i < hostKeysDEBUG.size(); i++) {
- std::cout << "key:" << hostKeysDEBUG[i] << ", value:"
- << hostValuesDEBUG[i] << std::endl;
- }
-
- std::cout << "begin output extended key-value pair" << std::endl;
- thrust::host_vector<uint> hostExtendedKeysDEBUG = tmpExtendedBucketKeys;
- thrust::host_vector<uint> hostExtendedValuesDEBUG = tmpExtendedBucketValues;
- for (uint i = 0; i < hostExtendedKeysDEBUG.size(); i++) {
- std::cout << "key:" << hostExtendedKeysDEBUG[i] << ", value:"
- << hostExtendedValuesDEBUG[i] << std::endl;
- }
-
- thrust::device_vector<uint> fullBucketKeys(totalBucketCount, 0);
- thrust::device_vector<uint> fullBucketValues(totalBucketCount, 0);
- thrust::sequence(fullBucketKeys.begin(), fullBucketKeys.end());
- thrust::scatter(tmpBucketValues.begin(), tmpBucketValues.end(),
- tmpBucketKeys.begin(), fullBucketValues.begin());
- thrust::host_vector<uint> hostKeysDEBUG2 = fullBucketKeys;
- thrust::host_vector<uint> hostValuesDEBUG2 = fullBucketValues;
- for (uint i = 0; i < totalBucketCount; i++) {
- std::cout << "key:" << hostKeysDEBUG2[i] << ", value:"
- << hostValuesDEBUG2[i] << std::endl;
- }
-
- thrust::device_vector<uint> fullExtendedBucketKeys(totalBucketCount, 0);
- thrust::device_vector<uint> fullExtendedBucketValues(totalBucketCount, 0);
- thrust::sequence(fullExtendedBucketKeys.begin(),
- fullExtendedBucketKeys.end());
- thrust::scatter(tmpExtendedBucketValues.begin(),
- tmpExtendedBucketValues.end(), tmpExtendedBucketKeys.begin(),
- fullExtendedBucketValues.begin());
- thrust::host_vector<uint> hostExtendedKeysDEBUG2 = fullExtendedBucketKeys;
- thrust::host_vector<uint> hostExtendedValuesDEBUG2 =
- fullExtendedBucketValues;
- for (uint i = 0; i < totalBucketCount; i++) {
- std::cout << "key:" << hostExtendedKeysDEBUG2[i] << ", value:"
- << hostExtendedValuesDEBUG2[i] << std::endl;
- }
- int numberOfKeysOfOurInterest = thrust::count_if(
- thrust::make_zip_iterator(
- thrust::make_tuple(fullBucketValues.begin(),
- fullExtendedBucketValues.begin())),
- thrust::make_zip_iterator(
- thrust::make_tuple(fullBucketValues.end(),
- fullExtendedBucketValues.end())), bothNoneZero());
- std::cout << "number of keys of our interest= " << numberOfKeysOfOurInterest
- << std::endl;
- thrust::device_vector<uint> usefulKeys(numberOfKeysOfOurInterest);
- thrust::device_vector<uint> usefulValues(numberOfKeysOfOurInterest);
- thrust::device_vector<uint> usefulExtendedValues(numberOfKeysOfOurInterest);
- thrust::copy_if(
- thrust::make_zip_iterator(
- thrust::make_tuple(fullBucketValues.begin(),
- fullExtendedBucketValues.begin(),
- fullExtendedBucketKeys.begin())),
- thrust::make_zip_iterator(
- thrust::make_tuple(fullBucketValues.end(),
- fullExtendedBucketValues.end(),
- fullExtendedBucketKeys.end())),
- thrust::make_zip_iterator(
- thrust::make_tuple(usefulValues.begin(),
- usefulExtendedValues.begin(), usefulKeys.begin())),
- bothNoneZero2());
-
- thrust::host_vector<uint> hostUsefulKeys = usefulKeys;
- thrust::host_vector<uint> hostUsefulValues = usefulValues;
- thrust::host_vector<uint> hostUsefulExtendedValues = usefulExtendedValues;
- for (uint i = 0; i < numberOfKeysOfOurInterest; i++) {
- std::cout << "key:" << hostUsefulKeys[i] << ", value1:"
- << hostUsefulValues[i] << ", value2: "
- << hostUsefulExtendedValues[i] << std::endl;
- }
-
- thrust::device_vector<unsigned int> bucket_begin(totalBucketCount);
- thrust::device_vector<unsigned int> bucket_end(totalBucketCount);
-
- thrust::counting_iterator<unsigned int> search_begin(0);
- thrust::lower_bound(bucketKeysExpanded.begin(), bucketKeysExpanded.end(),
- search_begin, search_begin + totalBucketCount,
- bucket_begin.begin());
-
- // find the end of each bucket's list of points
- thrust::upper_bound(bucketKeysExpanded.begin(), bucketKeysExpanded.end(),
- search_begin, search_begin + totalBucketCount, bucket_end.begin());
- thrust::host_vector<uint> hostBucketBegin = bucket_begin;
- thrust::host_vector<uint> hostBucketEnd = bucket_end;
- for (uint i = 0; i < totalBucketCount; i++) {
- std::cout << "begin index:" << hostBucketBegin[i] << ", end index:"
- << hostBucketEnd[i] << std::endl;
- }
-
- thrust::device_vector<unsigned int> selectedBucketIndexBegin(
- numberOfKeysOfOurInterest);
- thrust::device_vector<unsigned int> selectedBucketIndexEnd(
- numberOfKeysOfOurInterest);
- thrust::copy(
- thrust::make_permutation_iterator(bucket_begin.begin(),
- usefulKeys.begin()),
- thrust::make_permutation_iterator(bucket_begin.begin(),
- usefulKeys.end()), selectedBucketIndexBegin.begin());
-
- thrust::copy(
- thrust::make_permutation_iterator(bucket_end.begin(),
- usefulKeys.begin()),
- thrust::make_permutation_iterator(bucket_end.begin(),
- usefulKeys.end()), selectedBucketIndexEnd.begin());
- thrust::host_vector<uint> selectedBucketIndexBeginFromGPU =
- selectedBucketIndexBegin;
- thrust::host_vector<uint> selectedBucketIndexEndFromGPU =
- selectedBucketIndexEnd;
- for (uint i = 0; i < numberOfKeysOfOurInterest; i++) {
- std::cout << i << " th useful key, begin index = "
- << selectedBucketIndexBeginFromGPU[i] << ", end index = "
- << selectedBucketIndexEndFromGPU[i] << std::endl;
- }
-
- uint modifiedExtendedValuesSize = bucketKeysExpanded.size();
- thrust::device_vector<int> auxSeq1(numberOfKeysOfOurInterest);
- thrust::device_vector<int> auxSeq2(numberOfKeysOfOurInterest);
- thrust::device_vector<int> auxSeq3(modifiedExtendedValuesSize);
- thrust::device_vector<int> auxSeq4(modifiedExtendedValuesSize);
- //thrust::device_vector<int> auxSeq5(modifiedExtendedValuesSize);
-
- thrust::sequence(auxSeq1.begin(), auxSeq1.end(), 1, 1);
- thrust::sequence(auxSeq2.begin(), auxSeq2.end(), -1, -1);
- thrust::scatter(auxSeq1.begin(), auxSeq1.end(),
- selectedBucketIndexBegin.begin(), auxSeq3.begin());
- thrust::scatter(auxSeq2.begin(), auxSeq2.end(),
- selectedBucketIndexEnd.begin(), auxSeq4.begin());
- thrust::inclusive_scan(auxSeq3.begin(), auxSeq3.end(), auxSeq3.begin(),
- thrust::maximum<uint>());
- thrust::inclusive_scan(auxSeq4.begin(), auxSeq4.end(), auxSeq4.begin(),
- thrust::minimum<int>());
- thrust::transform(auxSeq3.begin(), auxSeq3.end(), auxSeq4.begin(),
- auxSeq3.begin(), thrust::plus<uint>());
- thrust::host_vector<int> copyAuxIndex = auxSeq3;
- //thrust::host_vector<int> seq4 = auxSeq4;
- std::cout << "array size:" << modifiedExtendedValuesSize << std::endl;
- for (uint i = 0; i < copyAuxIndex.size(); i++) {
- std::cout << copyAuxIndex[i] << ", ";
- }
- std::cout << std::endl;
- //for (uint i = 0; i < copyAuxIndex.size(); i++) {
- //	std::cout << seq4[i] << ", ";
- //}
- //std::cout << std::endl;
-
- uint shrinkedExtendedValueSize = thrust::count(auxSeq3.begin(),
- auxSeq3.end(), 1);
- std::cout << "shrinked size = " << shrinkedExtendedValueSize << std::endl;
- thrust::device_vector<uint> shrinkedExtendedKeys(shrinkedExtendedValueSize);
- thrust::device_vector<uint> shrinkedExtendedValues(
- shrinkedExtendedValueSize);
- thrust::copy_if(
- thrust::make_zip_iterator(
- thrust::make_tuple(bucketKeysExpanded.begin(),
- bucketValuesIncludingNeighbor.begin())),
- thrust::make_zip_iterator(
- thrust::make_tuple(bucketKeysExpanded.end(),
- bucketValuesIncludingNeighbor.end())),
- auxSeq3.begin(),
- thrust::make_zip_iterator(
- thrust::make_tuple(shrinkedExtendedKeys.begin(),
- shrinkedExtendedValues.begin())), isOne());
- thrust::host_vector<uint> shrinkedExtendedKeysFromGPU = shrinkedExtendedKeys;
- thrust::host_vector<uint> shrinkedExtendedValuesFromGPU =
- shrinkedExtendedValues;
- for (uint i = 0; i < shrinkedExtendedValueSize; i++) {
- std::cout << "key:" << shrinkedExtendedKeysFromGPU[i] << ", value = "
- << shrinkedExtendedValuesFromGPU[i] << std::endl;
- }
- }
- */
-
-/**
- * Depreciated.
- */
-void SceNodes::move(double dt) {
-
-	thrust::transform(
-			make_zip_iterator(
-					make_tuple(nodeVelX.begin(), nodeVelY.begin(),
-							nodeVelZ.begin())),
-			make_zip_iterator(
-					make_tuple(nodeVelX.end(), nodeVelY.end(), nodeVelZ.end())),
-			make_zip_iterator(
-					make_tuple(nodeLocX.begin(), nodeLocY.begin(),
-							nodeLocZ.begin())),
-			make_zip_iterator(
-					make_tuple(nodeLocX.begin(), nodeLocY.begin(),
-							nodeLocZ.begin())), AddFunctor(dt));
-	std::cout << " number of boundary nodes"
-			<< currentActiveCellCount * maxNodeOfOneCell << std::endl;
-	int jj;
-	std::cin >> jj;
-	for (uint i = 0; i < currentActiveCellCount * maxNodeOfOneCell; i++) {
-		if (nodeVelX[i] != 0.0) {
-			std::cout << " error in boundary node vel, vel should be 0, actual:"
-					<< nodeVelX[i] << std::endl;
-		}
-	}
-}

@@ -16,7 +16,7 @@ SimulationDomainGPU::SimulationDomainGPU() {
 	cout << "start to create simulatonDomainGPU object" << endl;
 
 	maxCellInDomain =
-			globalConfigVars.getConfigValue(string("MaxCellInDomain")).toInt();
+			globalConfigVars.getConfigValue("MaxCellInDomain").toInt();
 	maxNodePerCell =
 			globalConfigVars.getConfigValue("MaxNodePerCell").toDouble();
 	maxECMInDomain =
@@ -408,7 +408,7 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	thrust::host_vector<int> cellRanks;
 	allNodeTypes.resize(totalSize);
 	cellRanks.resize(totalSize);
-	int currentRank = 0;
+	//int currentRank = 0;
 	while (counter < cellTypeSize) {
 		// if count is already beyond the bound, we need to increase the current level.
 		if (counter == bounds[level]) {
@@ -417,7 +417,7 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 		allNodeTypes[counter] = cellTypesForEachLevel[level];
 		if (level == 0) {
 			cellRanks[counter] = counter / nodesPerCellEachLevel[0];
-			currentRank = cellRanks[counter];
+			//currentRank = cellRanks[counter];
 		} else {
 			cellRanks[counter] = (counter - bounds[level - 1])
 					/ nodesPerCellEachLevel[level];
@@ -436,39 +436,39 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	thrust::copy(initBdryCellNodePosY.begin(), initBdryCellNodePosY.end(),
 			nodes.nodeLocY.begin());
 
-    // copy x and y position of nodes of Profile to actual node position.
+	// copy x and y position of nodes of Profile to actual node position.
 	thrust::copy(initProfileNodePosX.begin(), initProfileNodePosX.end(),
 			nodes.nodeLocX.begin() + beginAddressOfProfile);
 	thrust::copy(initProfileNodePosY.begin(), initProfileNodePosY.end(),
 			nodes.nodeLocY.begin() + beginAddressOfProfile);
 
-    // copy x and y position of nodes of ECM to actual node position.
+	// copy x and y position of nodes of ECM to actual node position.
 	thrust::copy(initECMNodePosX.begin(), initFNMCellNodePosX.end(),
 			nodes.nodeLocX.begin() + beginAddressOfECM);
 	thrust::copy(initECMNodePosY.begin(), initFNMCellNodePosY.end(),
 			nodes.nodeLocY.begin() + beginAddressOfECM);
 
-    // copy x and y position of nodes of FNM cells to actual node position.
+	// copy x and y position of nodes of FNM cells to actual node position.
 	thrust::copy(initFNMCellNodePosX.begin(), initFNMCellNodePosX.end(),
 			nodes.nodeLocX.begin() + beginAddressOfFNM);
 	thrust::copy(initFNMCellNodePosY.begin(), initFNMCellNodePosY.end(),
 			nodes.nodeLocY.begin() + beginAddressOfFNM);
 
-    // copy x and y position of nodes of MX cells to actual node position.
+	// copy x and y position of nodes of MX cells to actual node position.
 	thrust::copy(initMXCellNodePosX.begin(), initMXCellNodePosX.end(),
 			nodes.nodeLocX.begin() + beginAddressOfMX);
 	thrust::copy(initMXCellNodePosY.begin(), initMXCellNodePosY.end(),
 			nodes.nodeLocY.begin() + beginAddressOfMX);
 
-    // set cell types
+	// set cell types
 	thrust::device_vector<CellType> cellTypesToPass = cellTypes;
 
-    // copy initial active node count info to GPU
+	// copy initial active node count info to GPU
 	thrust::copy(numOfInitActiveNodesOfCells.begin(),
 			numOfInitActiveNodesOfCells.end(),
 			cells.activeNodeCountOfThisCell.begin());
-    // set isActiveInfo
-    // allocate space for isActive info
+	// set isActiveInfo
+	// allocate space for isActive info
 	uint sizeOfTmpVector = maxNodePerCell * initNodeCountSize;
 	thrust::host_vector<bool> isActive(sizeOfTmpVector, false);
 

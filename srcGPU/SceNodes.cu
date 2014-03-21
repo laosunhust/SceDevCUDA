@@ -8,11 +8,13 @@ double sceIntraParaCPU[4];
 __constant__ double sceDiffPara[5];
 double sceDiffParaCPU[5];
 
-//TODO: initialize value for these four
-__constant__ uint cellNodeBeginAddress;
-__constant__ uint nodeCountPerCell;
-__constant__ uint ECMbeginAddress;
+// __constant__ uint sceNodeAuxInfo[5];
+
+__constant__ uint ProfilebeginPos;
+__constant__ uint ECMbeginPos;
+__constant__ uint cellNodeBeginPos;
 __constant__ uint nodeCountPerECM;
+__constant__ uint nodeCountPerCell;
 
 // This template method expands an input sequence by
 // replicating each element a variable number of times. For example,
@@ -258,10 +260,6 @@ SceNodes::SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
 	maxNodePerECM = maxNodeInECM;
 	maxECMCount = maxTotalECMCount;
 	currentActiveCellCount = 0;
-	// for now it is initialized as 3.
-	// maxNodePerECM = 3;
-	// for now it is initialized as 0.
-	// maxECMCount = 0;
 	maxTotalECMNodeCount = maxECMCount * maxNodePerECM;
 	currentActiveECM = 0;
 
@@ -270,10 +268,10 @@ SceNodes::SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
 
 	//cellRanks.resize(maxTotalNodeCount);
 	//nodeRanks.resize(maxTotalNodeCount);
-	std::cout << "before resizing vectors" << std::endl;
+	//std::cout << "before resizing vectors" << std::endl;
 	uint maxTotalNodeCount = totalBdryNodeCount + maxProfileNodeCount
 			+ maxTotalECMNodeCount + maxTotalCellNodeCount;
-	std::cout << "maxTotalNodeCount = " << maxTotalNodeCount << std::endl;
+	//std::cout << "maxTotalNodeCount = " << maxTotalNodeCount << std::endl;
 	//thrust::host_vector<bool> nodeIsActiveHost
 
 	nodeLocX.resize(maxTotalNodeCount);
@@ -285,27 +283,32 @@ SceNodes::SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
 	nodeCellType.resize(maxTotalNodeCount);
 	nodeCellRank.resize(maxTotalNodeCount);
 	nodeIsActive.resize(maxTotalNodeCount);
-	// std::cout << "nodeIsActive resize complete" << std::endl;
 
-	// std::cout << "after resizing vectors" << std::endl;
-	//thrust::counting_iterator<uint> countingBegin(0);
-	//thrust::counting_iterator<uint> countingEnd(maxTotalNodeCount);
+	startPosProfile = totalBdryNodeCount;
+	startPosECM = startPosProfile + maxProfileNodeCount;
+	startPosCells = startPosECM + maxTotalECMNodeCount;
 
-	// following block of code is depreciated due to a simplification of node global notation
-	//thrust::transform(
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
-	//						countingBegin)),
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.end(), nodeRanks.end(), countingEnd)),
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
-	//						countingBegin)), InitFunctor(maxCellCount));
+	thrust::host_vector<CellType> hostTmpVector(maxTotalNodeCount);
+	thrust::host_vector<bool> hostTmpVector2(maxTotalNodeCount);
+	for (int i = 0; i < maxTotalNodeCount; i++) {
+		if (i < startPosProfile) {
+			hostTmpVector[i] = Boundary;
+		} else if (i < startPosECM) {
+			hostTmpVector[i] = Profile;
+		} else if (i < startPosCells) {
+			hostTmpVector[i] = ECM;
+		} else {
+			// all initialized as FNM
+			hostTmpVector[i] = FNM;
+		}
+		nodeIsActive[i] = false;
+	}
+	nodeCellType = hostTmpVector;
+	nodeIsActive = hostTmpVector2;
+	copyParaToGPUConstMem();
+}
 
-	//ConfigParser parser;
-	//std::string configFileName = "sceCell.config";
-	// globalConfigVars should be a global variable and defined in the main function.
-	//globalConfigVars = parser.parseConfigFile(configFileName);
+void SceNodes::copyParaToGPUConstMem() {
 	static const double U0 =
 			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
 					/ globalConfigVars.getConfigValue("InterCell_U0_DivFactor").toDouble();
@@ -344,10 +347,15 @@ SceNodes::SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
 	sceIntraParaCPU[2] = k1_Intra;
 	sceIntraParaCPU[3] = k2_Intra;
 
-	std::cout << "in SceNodes, before cuda memory copy to symbol:" << std::endl;
+	//std::cout << "in SceNodes, before cuda memory copy to symbol:" << std::endl;
 	cudaMemcpyToSymbol(sceInterPara, sceInterParaCPU, 5 * sizeof(double));
 	cudaMemcpyToSymbol(sceIntraPara, sceIntraParaCPU, 4 * sizeof(double));
-	std::cout << "finished SceNodes:" << std::endl;
+	cudaMemcpyToSymbol(ProfilebeginPos, &startPosProfile, sizeof(uint));
+	cudaMemcpyToSymbol(ECMbeginPos, &startPosECM, sizeof(uint));
+	cudaMemcpyToSymbol(cellNodeBeginPos, &startPosCells, sizeof(uint));
+	cudaMemcpyToSymbol(nodeCountPerECM, &maxNodePerECM, sizeof(uint));
+	cudaMemcpyToSymbol(nodeCountPerCell, &maxNodeOfOneCell, sizeof(uint));
+	//std::cout << "finished SceNodes:" << std::endl;
 }
 
 void SceNodes::addNewlyDividedCells(
@@ -360,7 +368,8 @@ void SceNodes::addNewlyDividedCells(
 	assert(shiftSize % maxNodeOfOneCell == 0);
 	uint addCellCount = shiftSize / maxNodeOfOneCell;
 
-	uint shiftStartPos = currentActiveCellCount * maxNodeOfOneCell;
+	uint shiftStartPos = startPosCells
+			+ currentActiveCellCount * maxNodeOfOneCell;
 	uint shiftEndPos = shiftStartPos + currentActiveECM * maxNodePerECM;
 	uint ECMStartPos = shiftStartPos + shiftSize;
 	// reason using this tmp vector is that GPU copying does not guarantee copying sequence.
@@ -405,9 +414,46 @@ void SceNodes::addNewlyDividedCells(
 	currentActiveCellCount = currentActiveCellCount + addCellCount;
 }
 
+void SceNodes::addNewlyDividedCells(
+		thrust::device_vector<double> &nodeLocXNewCell,
+		thrust::device_vector<double> &nodeLocYNewCell,
+		thrust::device_vector<double> &nodeLocZNewCell,
+		thrust::device_vector<bool> &nodeIsActiveNewCell,
+		thrust::device_vector<CellType> &nodeCellTypeNewCell) {
+
+	// data validation
+	uint nodesSize = nodeLocXNewCell.size();
+	assert(nodesSize % maxNodeOfOneCell == 0);
+	uint addCellCount = nodesSize / maxNodeOfOneCell;
+
+	// position that we will add newly divided cells.
+	uint shiftStartPosNewCell = startPosCells
+			+ currentActiveCellCount * maxNodeOfOneCell;
+
+	thrust::copy(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodeLocXNewCell.begin(),
+							nodeLocYNewCell.begin(), nodeLocZNewCell.begin(),
+							nodeIsActiveNewCell.begin(),
+							nodeCellTypeNewCell.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodeLocXNewCell.end(),
+							nodeLocYNewCell.end(), nodeLocZNewCell.end(),
+							nodeIsActiveNewCell.end(),
+							nodeCellTypeNewCell.end())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodeLocX.begin(), nodeLocY.begin(),
+							nodeLocZ.begin(), nodeIsActive.begin(),
+							nodeCellType.begin())) + shiftStartPosNewCell);
+
+	// total number of cells has increased.
+	currentActiveCellCount = currentActiveCellCount + addCellCount;
+}
+
 void SceNodes::buildBuckets2D(double minX, double maxX, double minY,
 		double maxY, double bucketSize) {
-	int totalActiveNodes = currentActiveCellCount * maxNodeOfOneCell;
+	int totalActiveNodes = startPosCells
+			+ currentActiveCellCount * maxNodeOfOneCell;
 
 	// TODO: change number of total active nodes
 //std::cout << "total number of active nodes:" << totalActiveNodes
@@ -554,8 +600,17 @@ __device__ bool isSameCell(uint nodeGlobalRank1, uint nodeGlobalRank2,
 }
 
 __device__ bool isSameCell(uint nodeGlobalRank1, uint nodeGlobalRank2) {
-	if ((nodeGlobalRank1 - cellNodeBeginAddress) / nodeCountPerCell
-			== (nodeGlobalRank2 - cellNodeBeginAddress) / nodeCountPerCell) {
+	if ((nodeGlobalRank1 - cellNodeBeginPos) / nodeCountPerCell
+			== (nodeGlobalRank2 - cellNodeBeginPos) / nodeCountPerCell) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
+__device__ bool isSameECM(uint nodeGlobalRank1, uint nodeGlobalRank2) {
+	if ((nodeGlobalRank1 - ECMbeginPos) / nodeCountPerECM
+			== (nodeGlobalRank2 - ECMbeginPos) / nodeCountPerECM) {
 		return true;
 	} else {
 		return false;
@@ -564,8 +619,8 @@ __device__ bool isSameCell(uint nodeGlobalRank1, uint nodeGlobalRank2) {
 
 __device__ bool isNeighborECMNodes(uint nodeGlobalRank1, uint nodeGlobalRank2) {
 	// this means that two nodes are from the same ECM
-	if ((nodeGlobalRank1 - ECMbeginAddress) / nodeCountPerECM
-			== (nodeGlobalRank2 - ECMbeginAddress) / nodeCountPerECM) {
+	if ((nodeGlobalRank1 - ECMbeginPos) / nodeCountPerECM
+			== (nodeGlobalRank2 - ECMbeginPos) / nodeCountPerECM) {
 		// this means that two nodes are actually close to each other
 		// seems to be strange because of unsigned int.
 		if ((nodeGlobalRank1 > nodeGlobalRank2
@@ -629,15 +684,17 @@ void handleForceBetweenNodes(uint &nodeRank1, CellType &type1, uint &nodeRank2,
 			}
 		}
 	}
-	// this means that both nodes come from ECM
-	else if (type1 == ECM && type2 == ECM
-			&& isNeighborECMNodes(nodeRank1, nodeRank2)) {
-		// TODO: need to create another two vectors that holds the neighbor information for ECM.
-		// TODO: alternatively, try to store ECM begin address and number of node per ECM in constant memory.
-		// TODO: implement this function.
-		calculateAndAddECMForce(xPos, yPos, zPos, _nodeLocXAddress[nodeRank2],
-				_nodeLocYAddress[nodeRank2], _nodeLocZAddress[nodeRank2], xRes,
-				yRes, zRes);
+	// this means that both nodes come from ECM and from same ECM
+	else if (type1 == ECM && type2 == ECM && isSameECM(nodeRank1, nodeRank2)) {
+		if (isNeighborECMNodes(nodeRank1, nodeRank2)) {
+			// TODO: need to create another two vectors that holds the neighbor information for ECM.
+			// TODO: alternatively, try to store ECM begin address and number of node per ECM in constant memory.
+			// TODO: implement this function.
+			calculateAndAddECMForce(xPos, yPos, zPos,
+					_nodeLocXAddress[nodeRank2], _nodeLocYAddress[nodeRank2],
+					_nodeLocZAddress[nodeRank2], xRes, yRes, zRes);
+		}
+		// if both nodes belong to same ECM but are not neighbors they shouldn't interact.
 	}
 	// this means that both nodes come from profile ( Epithilum layer).
 	else if (type1 == Profile && type2 == Profile) {
@@ -648,6 +705,8 @@ void handleForceBetweenNodes(uint &nodeRank1, CellType &type1, uint &nodeRank2,
 					_nodeLocXAddress[nodeRank2], _nodeLocYAddress[nodeRank2],
 					_nodeLocZAddress[nodeRank2], xRes, yRes, zRes);
 		}
+		// if both nodes belong to Profile but are not neighbors they shouldn't interact.
+
 	} else {
 		// for now, we assume that interaction between other nodes are the same as inter-cell force.
 		calculateAndAddInterForce(xPos, yPos, zPos, _nodeLocXAddress[nodeRank2],

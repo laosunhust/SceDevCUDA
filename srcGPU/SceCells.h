@@ -515,7 +515,7 @@ struct ApplyStretchForce: thrust::unary_function<CVec6, CVec2> {
 	__host__ __device__ ApplyStretchForce(double elongationCoefficient) :
 			_elongationCoefficient(elongationCoefficient) {
 	}
-	__host__                  __device__ CVec2 operator()(const CVec6 &vec6) {
+	__host__ __device__ CVec2 operator()(const CVec6 &vec6) {
 		double distToCenterAlongGrowDir = thrust::get < 0 > (vec6);
 		// minimum distance of node to its corresponding center along growth direction
 		double lengthDifference = thrust::get < 1 > (vec6);
@@ -538,7 +538,7 @@ struct ApplyChemoVel: thrust::unary_function<CVec5, CVec2> {
 	__host__ __device__ ApplyChemoVel(double chemoCoefficient) :
 			_chemoCoefficient(chemoCoefficient) {
 	}
-	__host__                __device__ CVec2 operator()(const CVec5 &vec5) {
+	__host__ __device__ CVec2 operator()(const CVec5 &vec5) {
 		double growthSpeed = thrust::get < 0 > (vec5);
 		double growthXDir = thrust::get < 1 > (vec5);
 		double growthYDir = thrust::get < 2 > (vec5);
@@ -563,7 +563,7 @@ struct LeftShiftFunctor: thrust::unary_function<uint, uint> {
 	__host__ __device__ LeftShiftFunctor(uint maxNodeOfOneCell) :
 			_shiftLeftOffset(maxNodeOfOneCell / 2) {
 	}
-	__host__                  __device__ uint operator()(const uint &position) {
+	__host__ __device__ uint operator()(const uint &position) {
 		uint result;
 		if (position < _shiftLeftOffset) {
 			// could be 0, because these region will actually never be used
@@ -633,7 +633,7 @@ struct CompuPos: thrust::unary_function<Tuint2, uint> {
 	__host__ __device__ CompuPos(uint maxNodeOfOneCell) :
 			_maxNodeCountPerCell(maxNodeOfOneCell) {
 	}
-	__host__                                         __device__ uint operator()(const Tuint2 &vec) {
+	__host__ __device__ uint operator()(const Tuint2 &vec) {
 		uint rankInCell = thrust::get < 0 > (vec) % _maxNodeCountPerCell;
 		uint cellRank = thrust::get < 1 > (vec);
 		return (cellRank * _maxNodeCountPerCell + rankInCell);
@@ -658,7 +658,7 @@ struct CompuIsDivide: thrust::unary_function<CVec3Int, bool> {
 			_isDivideCriticalRatio(isDivideCriticalRatio), _maxNodePerCell(
 					maxNodePerCell) {
 	}
-	__host__            __device__ uint operator()(const CVec3Int &vec) {
+	__host__ __device__ uint operator()(const CVec3Int &vec) {
 		double lengthDifference = thrust::get < 0 > (vec);
 		double expectedLength = thrust::get < 1 > (vec);
 		double currentLength = expectedLength - lengthDifference;
@@ -682,7 +682,7 @@ struct VelocityModifier: public thrust::unary_function<Vel2DActiveType, CVec2> {
 	__host__ __device__ VelocityModifier() {
 	}
 	// for now no modification
-	__host__          __device__ CVec2 operator()(const Vel2DActiveType &nodeInfo) {
+	__host__ __device__ CVec2 operator()(const Vel2DActiveType &nodeInfo) {
 		double velX = thrust::get < 0 > (nodeInfo);
 		double velY = thrust::get < 1 > (nodeInfo);
 		bool isActive = thrust::get < 2 > (nodeInfo);

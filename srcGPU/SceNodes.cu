@@ -480,11 +480,11 @@ void SceNodes::buildBuckets2D(double minX, double maxX, double minY,
 					make_tuple(bucketKeys.begin(), bucketValues.begin())),
 			pointToBucketIndex2D(minX, maxX, minY, maxY, bucketSize));
 
-// sort the points by their bucket index
+    // sort the points by their bucket index
 	thrust::sort_by_key(bucketKeys.begin(), bucketKeys.end(),
 			bucketValues.begin());
-// for those nodes that are inactive, we key value of UINT_MAX will be returned.
-// we need to removed those keys along with their values.
+    // for those nodes that are inactive, we key value of UINT_MAX will be returned.
+    // we need to removed those keys along with their values.
 	int numberOfOutOfRange = thrust::count(bucketKeys.begin(), bucketKeys.end(),
 			UINT_MAX);
 	bucketKeys.erase(bucketKeys.end() - numberOfOutOfRange, bucketKeys.end());

@@ -81,7 +81,7 @@ struct InitFunctor: public thrust::unary_function<Tuint3, Tuint3> {
 	__host__ __device__ InitFunctor(uint maxCell) :
 			maxCellCount(maxCell) {
 	}
-	__host__        __device__ Tuint3 operator()(const Tuint3 &v) {
+	__host__         __device__ Tuint3 operator()(const Tuint3 &v) {
 		uint iter = thrust::get < 2 > (v);
 		uint cellRank = iter / maxCellCount;
 		uint nodeRank = iter % maxCellCount;
@@ -98,7 +98,7 @@ struct AddFunctor: public thrust::binary_function<CVec3, CVec3, CVec3> {
 			_dt(dt) {
 	}
 
-	__host__        __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
+	__host__         __device__ CVec3 operator()(const CVec3 &vel, const CVec3 &loc) {
 		double xMoveDist = thrust::get < 0 > (vel) * _dt;
 		double yMoveDist = thrust::get < 1 > (vel) * _dt;
 		double zMoveDist = thrust::get < 2 > (vel) * _dt;
@@ -146,7 +146,7 @@ struct pointToBucketIndex2D: public thrust::unary_function<CVec3BoolInt, Tuint2>
 					bucketSize), width((maxX - minX) / bucketSize + 1) {
 	}
 
-	__host__  __device__ Tuint2 operator()(const CVec3BoolInt& v) const {
+	__host__   __device__ Tuint2 operator()(const CVec3BoolInt& v) const {
 		// find the raster indices of p's bucket
 		if (thrust::get < 3 > (v) == true) {
 			unsigned int x = static_cast<unsigned int>((thrust::get < 0
@@ -179,7 +179,7 @@ struct NeighborFunctor2D: public thrust::unary_function<Tuint2, Tuint2> {
 			_numOfBucketsInXDim(numOfBucketsInXDim), _numOfBucketsInYDim(
 					numOfBucketsInYDim) {
 	}
-	__host__        __device__ Tuint2 operator()(const Tuint2 &v) {
+	__host__         __device__ Tuint2 operator()(const Tuint2 &v) {
 		uint relativeRank = thrust::get < 1 > (v) % 9;
 		uint xPos = thrust::get < 0 > (v) % _numOfBucketsInXDim;
 		uint yPos = thrust::get < 0 > (v) / _numOfBucketsInXDim;
@@ -470,7 +470,7 @@ struct AddSceForceWType: public thrust::unary_function<Tuuuddd, CVec3> {
  * return a tuple of three zero double numbers.
  */
 struct GetZeroTupleThree: public thrust::unary_function<uint, CVec3> {
-	__host__  __device__ CVec3 operator()(const uint &value) {
+	__host__   __device__ CVec3 operator()(const uint &value) {
 		return thrust::make_tuple(0.0, 0.0, 0.0);
 	}
 };
@@ -523,7 +523,7 @@ public:
 	uint maxNodeOfOneCell;
 	// @maxCellCount represents maximum number of cells in the system
 	uint maxCellCount;
-	// @maxCellCount represents maximum number of cells(including pesudo-cells) in the system
+	// @maxCellCount represents maximum number of cells (including pesudo-cells) in the system
 	uint maxCellCountAll;
 	// @maxTotalNodeCount represents maximum total number of nodes of all cells
 	// maxTotalCellNodeCount = maxNodeOfOneCell * maxCellCount;
@@ -546,9 +546,11 @@ public:
 	uint currentActiveProfileNodeCount;
 
 	// @cellSpaceForBdry First several spaces are reserved for boundary.
-	uint cellSpaceForBdry;
+	// depreciated.
+	// uint cellSpaceForBdry;
 	// because several spaces are reserved for boundary, some nodes can't move
-	uint fixedNodeCount;
+	// depreciated.
+	// uint fixedNodeCount;
 
 	uint startPosProfile;
 	uint startPosECM;
@@ -635,7 +637,6 @@ public:
 			thrust::device_vector<double> &nodeLocZNewCell,
 			thrust::device_vector<bool> &nodeIsActiveNewCell,
 			thrust::device_vector<CellType> &nodeCellTypeNewCell);
-	void move(double dt);
 
 	uint getCurrentActiveCellCount() const {
 		return currentActiveCellCount;
@@ -677,15 +678,6 @@ public:
 		this->maxTotalCellNodeCount = maxTotalCellNodeCount;
 	}
 
-	uint getCellSpaceForBdry() const {
-		return cellSpaceForBdry;
-	}
-
-	void setCellSpaceForBdry(uint cellSpaceForBdry) {
-		this->cellSpaceForBdry = cellSpaceForBdry;
-		// these nodes are marked as fixed. We will empty its velocity in each iteration
-		fixedNodeCount = cellSpaceForBdry * maxNodeOfOneCell;
-	}
 
 	uint getCurrentActiveProfileNodeCount() const {
 		return currentActiveProfileNodeCount;
@@ -693,14 +685,6 @@ public:
 
 	void setCurrentActiveProfileNodeCount(uint currentActiveProfileNodeCount) {
 		this->currentActiveProfileNodeCount = currentActiveProfileNodeCount;
-	}
-
-	uint getFixedNodeCount() const {
-		return fixedNodeCount;
-	}
-
-	void setFixedNodeCount(uint fixedNodeCount) {
-		this->fixedNodeCount = fixedNodeCount;
 	}
 
 	uint getMaxEcmCount() const {

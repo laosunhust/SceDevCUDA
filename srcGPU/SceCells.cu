@@ -31,7 +31,7 @@ SceCells::SceCells(SceNodes* nodesInput) {
 	maxCellCount = nodesInput->getMaxCellCount();
 	maxTotalCellNodeCount = nodesInput->getMaxTotalCellNodeCount();
 	currentActiveCellCount = nodesInput->getCurrentActiveCellCount();
-	cellSpaceForBdry = nodesInput->getCellSpaceForBdry();
+	//cellSpaceForBdry = nodesInput->getCellSpaceForBdry();
 
 	nodes = nodesInput;
 	growthProgress.resize(maxCellCount, 0.0);
@@ -1121,6 +1121,7 @@ void SceCells::growAndDivide(double dt, GrowthDistriMap &region1,
 SceCells_M::SceCells_M(SceNodes* nodesInput) :
 		maxNodeOfOneCell(nodesInput->getMaxNodeOfOneCell()), countingBegin(0), initCellCount(
 				maxNodeOfOneCell / 2), initGrowthProgress(0.0) {
+
 	addNodeDistance =
 			globalConfigVars.getConfigValue("DistanceForAddingNode").toDouble();
 	minDistanceToOtherNode = globalConfigVars.getConfigValue(
@@ -1136,6 +1137,22 @@ SceCells_M::SceCells_M(SceNodes* nodesInput) :
 	isDivideCriticalRatio = globalConfigVars.getConfigValue(
 			"IsDivideCrticalRatio").toDouble();
 
+	beginPosOfBdry = 0;
+	//maxNodeOfBdry = nodesInput->cellSpaceForBdry;
+
+	beginPosOfEpi = 1;
+	maxNodeOfEpi = nodesInput->maxProfileNodeCount; // represents maximum number of nodes of epithilum layer.
+	beginPosOfEpiNode = nodesInput->startPosProfile;
+
+	maxNodeOfECM = nodesInput->maxNodePerECM; // represents maximum number of nodes per ECM
+	// represents begining position of ECM (in node perspective) value is 2
+	beginPosOfECM = 2;
+	// represents begining position of ECM (in cell perspective)
+	beginPosOfECMNode = nodesInput->startPosECM;
+	maxECMCount = nodesInput->maxECMCount;  // represents maximum number of ECM.
+
+	beginPosOfCells = beginPosOfECM + maxECMCount; // represents begining position of cells (in cell perspective)
+	beginPosOfCellsNode = nodesInput->startPosCells; // represents begining position of cells (in node perspective)
 	maxNodeOfOneCell = nodesInput->getMaxNodeOfOneCell();
 	// maxCellCount only take FNM and MX cells into consideration.
 	maxCellCount = nodesInput->getMaxCellCount();
@@ -1260,12 +1277,10 @@ void SceCells_M::copyGrowInfoFromGridToCells(GrowthDistriMap &region1,
 	thrust::transform(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(centerCoordX.begin(),
-							centerCoordY.begin(),
-							cellTypesAll.begin() + beginPosOfCells)),
+							centerCoordY.begin(), cellTypesAll.begin())),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(centerCoordX.begin(),
-							centerCoordY.begin(),
-							cellTypesAll.begin() + beginPosOfCells))
+							centerCoordY.begin(), cellTypesAll.begin()))
 					+ currentActiveCellCount,
 			thrust::make_zip_iterator(
 					thrust::make_tuple(growthSpeed.begin(), growthXDir.begin(),
@@ -1546,6 +1561,11 @@ void SceCells_M::addPointIfScheduledToGrow() {
 					time(NULL), growThreshold));
 }
 
+/**
+ * To run all the cell level logics.
+ * First step we got center positions of cells.
+ * Grow.
+ */
 void SceCells_M::runAllCellLevelLogics(double dt, GrowthDistriMap &region1,
 		GrowthDistriMap &region2) {
 	computeCenterPos();
@@ -1567,6 +1587,7 @@ void SceCells_M::allComponentsMove() {
  * the threshold is defined by array @activeNodeCountOfThisCell.
  * e.g. activeNodeCountOfThisCell = {2,3} and  maxNodeOfOneCell = 5,
  *
+ * @Checked.
  */
 void SceCells_M::distributeIsActiveInfo() {
 	uint totalNodeCountForActiveCells = currentActiveCellCount
@@ -1581,12 +1602,15 @@ void SceCells_M::distributeIsActiveInfo() {
 			thrust::make_permutation_iterator(activeNodeCountOfThisCell.begin(),
 					make_transform_iterator(countingBegin,
 							DivideFunctor(maxNodeOfOneCell))),
-			nodes->nodeIsActive.begin(), thrust::less<uint>());
+			nodes->nodeIsActive.begin() + beginPosOfCells,
+			thrust::less<uint>());
 }
 
 /**
  * This method computes center of all cells.
  * more efficient then simply iterating the cell because of parallel reducing.
+ *
+ * @Checked.
  */
 void SceCells_M::computeCenterPos() {
 	uint totalNodeCountForActiveCells = currentActiveCellCount
@@ -1602,15 +1626,18 @@ void SceCells_M::computeCenterPos() {
 					thrust::make_tuple(
 							make_transform_iterator(countingBegin,
 									DivideFunctor(maxNodeOfOneCell)),
-							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
-							nodes->nodeLocZ.begin())),
+							nodes->nodeLocX.begin() + beginPosOfCells,
+							nodes->nodeLocY.begin() + beginPosOfCells,
+							nodes->nodeLocZ.begin() + beginPosOfCells)),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(
 							make_transform_iterator(countingBegin,
 									DivideFunctor(maxNodeOfOneCell)),
-							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
-							nodes->nodeLocZ.begin()))
-					+ totalNodeCountForActiveCells, nodes->nodeIsActive.begin(),
+							nodes->nodeLocX.begin() + beginPosOfCells,
+							nodes->nodeLocY.begin() + beginPosOfCells,
+							nodes->nodeLocZ.begin() + beginPosOfCells))
+					+ totalNodeCountForActiveCells,
+			nodes->nodeIsActive.begin() + beginPosOfCells,
 			thrust::make_zip_iterator(
 					thrust::make_tuple(cellRanks.begin(), activeXPoss.begin(),
 							activeYPoss.begin(), activeZPoss.begin())),
@@ -1728,15 +1755,17 @@ void SceCells_M::copyCellsPreDivision() {
 							make_transform_iterator(countingBegin,
 									DivideFunctor(maxNodeOfOneCell)),
 							distToCenterAlongGrowDir.begin(),
-							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
-							nodes->nodeLocZ.begin())),
+							nodes->nodeLocX.begin() + beginPosOfCells,
+							nodes->nodeLocY.begin() + beginPosOfCells,
+							nodes->nodeLocZ.begin() + beginPosOfCells)),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(
 							make_transform_iterator(countingBegin,
 									DivideFunctor(maxNodeOfOneCell)),
 							distToCenterAlongGrowDir.begin(),
-							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
-							nodes->nodeLocZ.begin()))
+							nodes->nodeLocX.begin() + beginPosOfCells,
+							nodes->nodeLocY.begin() + beginPosOfCells,
+							nodes->nodeLocZ.begin() + beginPosOfCells))
 					+ totalNodeCountForActiveCells,
 			thrust::make_permutation_iterator(isDivided.begin(),
 					make_transform_iterator(countingBegin,
@@ -1747,14 +1776,14 @@ void SceCells_M::copyCellsPreDivision() {
 							tmpYValueHold1.begin(), tmpZValueHold1.begin())),
 			isTrue());
 
-	// step 2, continued, copy cell type to new cells
-	thrust::copy_if(cellTypesAll.begin(),
-			cellTypesAll.begin() + currentActiveCellCount, isDivided.begin(),
-			tmpCellTypes.begin(), isTrue());
+	// step 2, continued, copy cell type to new cell
+	thrust::copy_if(cellTypesAll.begin() + beginPosOfCells,
+			cellTypesAll.begin() + currentActiveCellCount + beginPosOfCells,
+			isDivided.begin(), tmpCellTypes.begin(), isTrue());
 }
 
 void SceCells_M::sortNodesAccordingToDist() {
-	//step 3
+//step 3
 	for (uint i = 0; i < toBeDivideCount; i++) {
 		thrust::sort_by_key(tmpDistToCenter1.begin() + i * maxNodeOfOneCell,
 				tmpDistToCenter1.begin() + (i + 1) * maxNodeOfOneCell,
@@ -1768,7 +1797,7 @@ void SceCells_M::sortNodesAccordingToDist() {
 }
 
 void SceCells_M::copyLeftAndRightToSeperateArrays() {
-	//step 4.
+//step 4.
 	thrust::scatter_if(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(tmpXValueHold1.begin(),
@@ -1797,7 +1826,7 @@ void SceCells_M::transformIsActiveArrayOfBothArrays() {
 }
 
 void SceCells_M::addSecondArrayToCellArray() {
-	/// step 6. call SceNodes function to add newly divided cells
+/// step 6. call SceNodes function to add newly divided cells
 	nodes->addNewlyDividedCells(tmpXValueHold2, tmpYValueHold2, tmpZValueHold2,
 			tmpIsActiveHold2);
 }
@@ -1818,9 +1847,11 @@ void SceCells_M::copyFirstArrayToPreviousPos() {
 									tmpCellRankHold1.begin())),
 					CompuPos(maxNodeOfOneCell)),
 			thrust::make_zip_iterator(
-					thrust::make_tuple(nodes->nodeIsActive.begin(),
-							nodes->nodeLocX.begin(), nodes->nodeLocY.begin(),
-							nodes->nodeLocZ.begin())));
+					thrust::make_tuple(
+							nodes->nodeIsActive.begin() + beginPosOfCells,
+							nodes->nodeLocX.begin() + beginPosOfCells,
+							nodes->nodeLocY.begin() + beginPosOfCells,
+							nodes->nodeLocZ.begin() + beginPosOfCells)));
 
 	thrust::scatter(initCellCount, initCellCount + toBeDivideCount,
 			tmpCellRankHold1.begin(), activeNodeCountOfThisCell.begin());

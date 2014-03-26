@@ -530,8 +530,8 @@ void SimulationDomainGPU::initializeCells(std::vector<double> initCellNodePosX,
 	nodes.setCurrentActiveCellCount(numberOfInitActiveCells);
 	cells.currentActiveCellCount = numberOfInitActiveCells;
 // cell space for boundary means number of cell spaces that are reserved for bdry.
-	nodes.setCellSpaceForBdry(cellSpaceForBdry);
-	cells.setCellSpaceForBdry(cellSpaceForBdry);
+	//nodes.setCellSpaceForBdry(cellSpaceForBdry);
+	//cells.setCellSpaceForBdry(cellSpaceForBdry);
 	thrust::host_vector<uint> cellActiveNodeCounts(numberOfInitActiveCells,
 			numberOfInitActiveNodePerCell);
 	thrust::copy(cellActiveNodeCounts.begin(), cellActiveNodeCounts.end(),

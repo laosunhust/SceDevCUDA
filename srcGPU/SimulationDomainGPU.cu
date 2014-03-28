@@ -550,6 +550,7 @@ void SimulationDomainGPU::runAllLogic(double dt) {
 //		growthMap.gridDimensionX, growthMap.gridDimensionY,
 //		growthMap.gridSpacing);
 	cells.growAndDivide(dt, growthMap, growthMap2);
+	// cells.runAllCellLevelLogics(dt,growthMap,growthMap2);
 }
 
 void SimulationDomainGPU::outputVtkFilesWithColor(std::string scriptNameBase,

@@ -1172,8 +1172,7 @@ SceCells_M::SceCells_M(SceNodes* nodesInput) :
 	activeNodeCountOfThisCell.resize(maxCellCount);
 	lastCheckPoint.resize(maxCellCount, 0.0);
 	isDivided.resize(maxCellCount);
-	//TODO: add cell type initialization
-	cellTypesAll.resize(maxCellCount, MX);
+	cellTypes.resize(maxCellCount, MX);
 	isScheduledToGrow.resize(maxCellCount, false);
 	centerCoordX.resize(maxCellCount);
 	centerCoordY.resize(maxCellCount);
@@ -1271,16 +1270,18 @@ void SceCells_M::grow2DTwoRegions(double d_t, GrowthDistriMap &region1,
 
 /**
  * we need to copy the growth information from grid for chemical to cell nodes.
+ *
+ * checked.
  */
 void SceCells_M::copyGrowInfoFromGridToCells(GrowthDistriMap &region1,
 		GrowthDistriMap &region2) {
 	thrust::transform(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(centerCoordX.begin(),
-							centerCoordY.begin(), cellTypesAll.begin())),
+							centerCoordY.begin(), cellTypes.begin())),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(centerCoordX.begin(),
-							centerCoordY.begin(), cellTypesAll.begin()))
+							centerCoordY.begin(), cellTypes.begin()))
 					+ currentActiveCellCount,
 			thrust::make_zip_iterator(
 					thrust::make_tuple(growthSpeed.begin(), growthXDir.begin(),
@@ -1510,7 +1511,7 @@ void SceCells_M::adjustNodeVel() {
 							nodes->nodeVelY.begin(),
 							nodes->nodeIsActive.begin(),
 							nodes->nodeCellType.begin()))
-					+ totalNodeCountForActiveCells,
+					+ totalNodeCountForActiveCells + beginPosOfCellsNode,
 			thrust::make_zip_iterator(
 					thrust::make_tuple(nodes->nodeVelX.begin(),
 							nodes->nodeVelY.begin())), VelocityModifier());
@@ -1526,7 +1527,7 @@ void SceCells_M::moveNodes() {
 			thrust::make_zip_iterator(
 					thrust::make_tuple(nodes->nodeVelX.begin(),
 							nodes->nodeVelY.begin()))
-					+ totalNodeCountForActiveCells,
+					+ totalNodeCountForActiveCells + beginPosOfCellsNode,
 			thrust::make_zip_iterator(
 					thrust::make_tuple(nodes->nodeLocX.begin(),
 							nodes->nodeLocY.begin())),
@@ -1590,8 +1591,8 @@ void SceCells_M::allComponentsMove() {
  * @Checked.
  */
 void SceCells_M::distributeIsActiveInfo() {
-	uint totalNodeCountForActiveCells = currentActiveCellCount
-			* maxNodeOfOneCell;
+	//uint totalNodeCountForActiveCells = currentActiveCellCount
+	//		* maxNodeOfOneCell;
 	thrust::counting_iterator < uint > countingBegin(0);
 	thrust::counting_iterator<uint> countingEnd(totalNodeCountForActiveCells);
 	thrust::transform(
@@ -1613,8 +1614,8 @@ void SceCells_M::distributeIsActiveInfo() {
  * @Checked.
  */
 void SceCells_M::computeCenterPos() {
-	uint totalNodeCountForActiveCells = currentActiveCellCount
-			* maxNodeOfOneCell;
+	//uint totalNodeCountForActiveCells = currentActiveCellCount
+	//		* maxNodeOfOneCell;
 	thrust::counting_iterator < uint > countingBegin(0);
 	thrust::counting_iterator<uint> countingEnd(totalNodeCountForActiveCells);
 	uint totalNumberOfActiveNodes = thrust::reduce(
@@ -1777,11 +1778,16 @@ void SceCells_M::copyCellsPreDivision() {
 			isTrue());
 
 	// step 2, continued, copy cell type to new cell
-	thrust::copy_if(cellTypesAll.begin() + beginPosOfCells,
-			cellTypesAll.begin() + currentActiveCellCount + beginPosOfCells,
-			isDivided.begin(), tmpCellTypes.begin(), isTrue());
+	thrust::copy_if(cellTypes.begin(),
+			cellTypes.begin() + currentActiveCellCount, isDivided.begin(),
+			tmpCellTypes.begin(), isTrue());
 }
 
+/**
+ * performance wise, this implementation is not the best because I can use only one sort_by_key
+ * with speciialized comparision operator. However, This implementation is more robust and won't
+ * cause serious delay of the program.
+ */
 void SceCells_M::sortNodesAccordingToDist() {
 //step 3
 	for (uint i = 0; i < toBeDivideCount; i++) {
@@ -1796,6 +1802,14 @@ void SceCells_M::sortNodesAccordingToDist() {
 	}
 }
 
+/**
+ * scatter_if() is a thrust function.
+ * inputIter1 first,
+ * inputIter1 last,
+ * inputIter2 map,
+ * inputIter3 stencil
+ * randomAccessIter output
+ */
 void SceCells_M::copyLeftAndRightToSeperateArrays() {
 //step 4.
 	thrust::scatter_if(
@@ -1828,7 +1842,7 @@ void SceCells_M::transformIsActiveArrayOfBothArrays() {
 void SceCells_M::addSecondArrayToCellArray() {
 /// step 6. call SceNodes function to add newly divided cells
 	nodes->addNewlyDividedCells(tmpXValueHold2, tmpYValueHold2, tmpZValueHold2,
-			tmpIsActiveHold2);
+			tmpIsActiveHold2, tmpCellTypes);
 }
 
 void SceCells_M::copyFirstArrayToPreviousPos() {

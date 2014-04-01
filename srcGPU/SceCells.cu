@@ -1607,6 +1607,21 @@ void SceCells_M::distributeIsActiveInfo() {
 			thrust::less<uint>());
 }
 
+void SceCells_M::distributeIsCellRank() {
+	//uint totalNodeCountForActiveCells = currentActiveCellCount
+	//		* maxNodeOfOneCell;
+	thrust::counting_iterator < uint > countingBegin(0);
+	thrust::counting_iterator<uint> countingCellEnd(
+			totalNodeCountForActiveCells);
+
+	thrust::counting_iterator<uint> countingECMEnd(countingECMEnd);
+
+	// only computes the cell ranks of cells. the rest remain unchanged.
+	thrust::transform(countingBegin, countingCellEnd,
+			nodes->nodeCellRank.begin() + beginPosOfCells,
+			DivideFunctor(maxNodeOfOneCell));
+}
+
 /**
  * This method computes center of all cells.
  * more efficient then simply iterating the cell because of parallel reducing.
@@ -1614,8 +1629,8 @@ void SceCells_M::distributeIsActiveInfo() {
  * @Checked.
  */
 void SceCells_M::computeCenterPos() {
-	//uint totalNodeCountForActiveCells = currentActiveCellCount
-	//		* maxNodeOfOneCell;
+//uint totalNodeCountForActiveCells = currentActiveCellCount
+//		* maxNodeOfOneCell;
 	thrust::counting_iterator < uint > countingBegin(0);
 	thrust::counting_iterator<uint> countingEnd(totalNodeCountForActiveCells);
 	uint totalNumberOfActiveNodes = thrust::reduce(
@@ -1712,7 +1727,7 @@ void SceCells_M::divide2DSimplified() {
 }
 
 void SceCells_M::decideIfGoingToDivide() {
-	// step 1
+// step 1
 	thrust::transform(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(lengthDifference.begin(),
@@ -1727,10 +1742,10 @@ void SceCells_M::decideIfGoingToDivide() {
 }
 
 void SceCells_M::copyCellsPreDivision() {
-	// step 2 : copy all cell rank and distance to its corresponding center with divide flag = 1
+// step 2 : copy all cell rank and distance to its corresponding center with divide flag = 1
 	totalNodeCountForActiveCells = currentActiveCellCount * maxNodeOfOneCell;
-	// sum all bool values which indicate whether the cell is going to divide.
-	// toBeDivideCount is the total number of cells going to divide.
+// sum all bool values which indicate whether the cell is going to divide.
+// toBeDivideCount is the total number of cells going to divide.
 	toBeDivideCount = thrust::reduce(isDivided.begin(),
 			isDivided.begin() + currentActiveCellCount, (uint) (0));
 	nodeStorageCount = toBeDivideCount * maxNodeOfOneCell;
@@ -1749,7 +1764,7 @@ void SceCells_M::copyCellsPreDivision() {
 
 	tmpCellTypes = thrust::device_vector < CellType > (toBeDivideCount);
 
-	// step 2 , continued
+// step 2 , continued
 	thrust::copy_if(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(
@@ -1777,7 +1792,7 @@ void SceCells_M::copyCellsPreDivision() {
 							tmpYValueHold1.begin(), tmpZValueHold1.begin())),
 			isTrue());
 
-	// step 2, continued, copy cell type to new cell
+// step 2, continued, copy cell type to new cell
 	thrust::copy_if(cellTypes.begin(),
 			cellTypes.begin() + currentActiveCellCount, isDivided.begin(),
 			tmpCellTypes.begin(), isTrue());

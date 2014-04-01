@@ -747,6 +747,8 @@ void SimulationDomainGPU::outputVtkFilesWithColor(std::string scriptNameBase,
  */
 void SimulationDomainGPU::outputVtkFilesWithColor_v2(std::string scriptNameBase,
 		int rank) {
+	cells_m.distributeIsCellRank();
+
 	uint activeTotalNodeCount = cells_m.beginPosOfCells
 			+ nodes.currentActiveCellCount * nodes.maxNodeOfOneCell;
 
@@ -758,37 +760,43 @@ void SimulationDomainGPU::outputVtkFilesWithColor_v2(std::string scriptNameBase,
 	thrust::device_vector<double> deviceTmpVectorLocZ(totalActiveCount);
 	thrust::device_vector<bool> deviceTmpVectorIsActive(totalActiveCount);
 	thrust::device_vector<CellType> deviceTmpVectorNodeType(totalActiveCount);
+	thrust::device_vector<uint> deviceTmpVectorNodeRank(totalActiveCount);
 
 	thrust::host_vector<double> hostTmpVectorLocX(totalActiveCount);
 	thrust::host_vector<double> hostTmpVectorLocY(totalActiveCount);
 	thrust::host_vector<double> hostTmpVectorLocZ(totalActiveCount);
 	thrust::host_vector<bool> hostTmpVectorIsActive(totalActiveCount);
 	thrust::host_vector<CellType> hostTmpVectorNodeType(totalActiveCount);
+	thrust::host_vector<uint> hostTmpVectorNodeRank(totalActiveCount);
 
 	thrust::copy_if(
 			thrust::make_zip_iterator(
 					thrust::make_tuple(nodes.nodeLocX.begin(),
 							nodes.nodeLocY.begin(), nodes.nodeLocZ.begin(),
 							nodes.nodeIsActive.begin(),
-							nodes.nodeCellType.begin())),
+							nodes.nodeCellType.begin(),
+							nodes.nodeCellRank.begin())),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(nodes.nodeLocX.begin(),
 							nodes.nodeLocY.begin(), nodes.nodeLocZ.begin(),
 							nodes.nodeIsActive.begin(),
-							nodes.nodeCellType.begin())) + activeTotalNodeCount,
+							nodes.nodeCellType.begin(),
+							nodes.nodeCellRank.begin())) + activeTotalNodeCount,
 			nodes.nodeIsActive.begin(),
 			thrust::make_zip_iterator(
 					thrust::make_tuple(deviceTmpVectorLocX.begin(),
 							deviceTmpVectorLocY.begin(),
 							deviceTmpVectorLocZ.begin(),
 							deviceTmpVectorIsActive.begin(),
-							deviceTmpVectorNodeType.begin())), isTrue());
+							deviceTmpVectorNodeType.begin(),
+							deviceTmpVectorNodeRank.begin())), isTrue());
 
 	hostTmpVectorLocX = deviceTmpVectorLocX;
 	hostTmpVectorLocY = deviceTmpVectorLocY;
 	hostTmpVectorLocZ = deviceTmpVectorLocZ;
 	hostTmpVectorIsActive = deviceTmpVectorIsActive;
 	hostTmpVectorNodeType = deviceTmpVectorNodeType;
+	hostTmpVectorNodeRank = deviceTmpVectorNodeRank;
 
 	int i, j;
 	std::vector < std::pair<uint, uint> > links;
@@ -824,8 +832,13 @@ void SimulationDomainGPU::outputVtkFilesWithColor_v2(std::string scriptNameBase,
 					hostTmpVectorLocZ[i], hostTmpVectorLocX[j],
 					hostTmpVectorLocY[j], hostTmpVectorLocZ[j])
 					<= intraLinkDisplayRange) {
-				// have this extra if because we don't want to include visualization for inter-cell interaction
-				if (hostTmpVectorNodeType[i] == hostTmpVectorNodeType[j]) {
+				// have this extra if because we don't want to include visualization
+				// for inter-cell interactions.
+				// to achieve that, we don't include links between different types
+				// and also avoid display links between different cells of same type
+				if (hostTmpVectorNodeType[i] == hostTmpVectorNodeType[j]
+						&& hostTmpVectorNodeRank[i]
+								== hostTmpVectorNodeRank[j]) {
 					links.push_back(std::make_pair<uint, uint>(i, j));
 					counterForLink++;
 				}

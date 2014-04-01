@@ -18,10 +18,12 @@ class SimulationDomainGPU {
 	uint maxNodePerCell;
 	uint maxECMInDomain;
 	uint maxNodePerECM;
+	uint initECMCount;
 	double FinalToInitProfileNodeCountRatio;
 public:
 	SceNodes nodes;
 	SceCells cells;
+	SceCells_M cells_m;
 
 	GrowthDistriMap growthMap; // first map
 
@@ -29,7 +31,7 @@ public:
 
 	// boundary nodes share same attribute with cell nodes
 	// but nodes can't move.
-	uint cellSpaceForBdry;
+	// uint cellSpaceForBdry;
 
 	double intraLinkDisplayRange;
 
@@ -94,6 +96,7 @@ public:
 
 	void runAllLogic(double dt);
 	void outputVtkFilesWithColor(std::string scriptNameBase, int rank);
+	void outputVtkFilesWithColor_v2(std::string scriptNameBase, int rank);
 };
 
 #endif

@@ -22,6 +22,7 @@ SimulationDomainGPU::SimulationDomainGPU() {
 	maxECMInDomain =
 			globalConfigVars.getConfigValue("MaxECMInDomain").toDouble();
 	maxNodePerECM = globalConfigVars.getConfigValue("MaxNodePerECM").toDouble();
+	initECMCount = globalConfigVars.getConfigValue("InitECMCount").toInt();
 	FinalToInitProfileNodeCountRatio = globalConfigVars.getConfigValue(
 			"FinalToInitProfileNodeCountRatio").toDouble();
 
@@ -281,7 +282,7 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	// redefine nodes using different constructor.
 	nodes = SceNodes(bdryNodeCount, maxProfileNodeCount, maxECMInDomain,
 			maxNodePerECM, maxCellInDomain, maxNodePerCell);
-	cells = SceCells(&nodes);
+	cells_m = SceCells_M(&nodes);
 
 	/*
 	 * first step: error checking.
@@ -379,13 +380,16 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	 * copy data from main system memory to GPU memory
 	 */
 
-	nodes.setCurrentActiveCellCount(cellTypeSize);
-	cells.currentActiveCellCount = cellTypeSize;
+	nodes.setCurrentActiveCellCount(fnmQuotient + mxQuotient);
+	cells_m.currentActiveCellCount = fnmQuotient + mxQuotient;
+
+	nodes.setCurrentActiveEcm(initECMCount);
+	cells_m.currentActiveECMCount = initECMCount;
 
 	// copy input of initial active node of cells to our actual data location
 	thrust::copy(numOfInitActiveNodesOfCells.begin(),
 			numOfInitActiveNodesOfCells.end(),
-			cells.activeNodeCountOfThisCell.begin());
+			cells_m.activeNodeCountOfThisCell.begin());
 
 	// find the begining position of Profile.
 	uint beginAddressOfProfile = bdryNodeCountX;
@@ -397,8 +401,7 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	uint beginAddressOfMX = beginAddressOfFNM + FNMNodeCountX;
 
 	// initialize the cell ranks and types
-	level = 0;
-	counter = 0;
+
 	int numOfCellEachLevel[] = { bdryQuotient, profileQuotient, ecmQuotient,
 			fnmQuotient, mxQuotient };
 	int nodesPerCellEachLevel[] = { bdryNodeCount, maxProfileNodeCount,
@@ -409,6 +412,8 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	allNodeTypes.resize(totalSize);
 	cellRanks.resize(totalSize);
 	//int currentRank = 0;
+	level = 0;
+	counter = 0;
 	while (counter < cellTypeSize) {
 		// if count is already beyond the bound, we need to increase the current level.
 		if (counter == bounds[level]) {
@@ -466,26 +471,50 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	// copy initial active node count info to GPU
 	thrust::copy(numOfInitActiveNodesOfCells.begin(),
 			numOfInitActiveNodesOfCells.end(),
-			cells.activeNodeCountOfThisCell.begin());
+			cells_m.activeNodeCountOfThisCell.begin());
 	// set isActiveInfo
 	// allocate space for isActive info
-	uint sizeOfTmpVector = maxNodePerCell * initNodeCountSize;
-	thrust::host_vector<bool> isActive(sizeOfTmpVector, false);
+	// uint sizeOfTmpVector = maxNodePerCell * initNodeCountSize;
+	// thrust::host_vector<bool> isActive(sizeOfTmpVector, false);
 
-	for (int i = 0; i < initNodeCountSize; i++) {
-		int j = 0;
-		int index;
-		while (j < numOfInitActiveNodesOfCells[i]) {
-			index = i * maxNodePerCell + j;
-			isActive[index] = true;
-			j++;
+	thrust::host_vector<bool> isActive(totalSize, false);
+
+	//for (int i = 0; i < initNodeCountSize; i++) {
+	//	int j = 0;
+	//	int index;
+	//	while (j < numOfInitActiveNodesOfCells[i]) {
+	//		index = i * maxNodePerCell + j;
+	//		isActive[index] = true;
+	//		j++;
+	//	}
+	//}
+	for (int i = 0; i < totalSize; i++) {
+		if (i < beginAddressOfProfile) {
+			isActive[i] = true;
+		} else if (i < beginAddressOfECM) {
+			if (i - beginAddressOfProfile < ProfileNodeCountX) {
+				isActive[i] = true;
+			} else {
+				isActive[i] = false;
+			}
+		} else if (i < beginAddressOfFNM) {
+			if (i - beginAddressOfECM < initECMCount * maxNodePerECM) {
+				isActive[i] = true;
+			} else {
+				isActive[i] = false;
+			}
+
+		} else {
+			// else : initially we don't need to set active for FNM and MX because
+			// this information will be updated while cell logic.
+			isActive[i] = false;
 		}
 	}
 // copy is active info to GPU
 	thrust::copy(isActive.begin(), isActive.end(), nodes.nodeIsActive.begin());
 
 // set cell types
-	cells.setCellTypes(cellTypesToPass);
+	cells_m.setCellTypes(cellTypesToPass);
 }
 
 void SimulationDomainGPU::initializeCells(std::vector<double> initCellNodePosX,
@@ -549,7 +578,8 @@ void SimulationDomainGPU::runAllLogic(double dt) {
 //		growthMap.growthFactorDirXComp, growthMap.growthFactorDirYComp,
 //		growthMap.gridDimensionX, growthMap.gridDimensionY,
 //		growthMap.gridSpacing);
-	cells.growAndDivide(dt, growthMap, growthMap2);
+	// cells.growAndDivide(dt, growthMap, growthMap2);
+	cells_m.runAllCellLevelLogics(dt, growthMap, growthMap2);
 	// cells.runAllCellLevelLogics(dt,growthMap,growthMap2);
 }
 
@@ -700,6 +730,143 @@ void SimulationDomainGPU::outputVtkFilesWithColor(std::string scriptNameBase,
 			}
 		}
 
+	}
+
+	fs.flush();
+	fs.close();
+}
+
+/**
+ * This is the second version of visualization.
+ * Inter-links are not colored for a clearer representation
+ * Fixed Boundary: Black
+ * FNM cells: Red
+ * MX cells: Blue
+ * ECM: Yellow
+ * Moving Epithilum layer: Green
+ */
+void SimulationDomainGPU::outputVtkFilesWithColor_v2(std::string scriptNameBase,
+		int rank) {
+	uint activeTotalNodeCount = cells_m.beginPosOfCells
+			+ nodes.currentActiveCellCount * nodes.maxNodeOfOneCell;
+
+	uint totalActiveCount = thrust::reduce(nodes.nodeIsActive.begin(),
+			nodes.nodeIsActive.begin() + activeTotalNodeCount);
+
+	thrust::device_vector<double> deviceTmpVectorLocX(totalActiveCount);
+	thrust::device_vector<double> deviceTmpVectorLocY(totalActiveCount);
+	thrust::device_vector<double> deviceTmpVectorLocZ(totalActiveCount);
+	thrust::device_vector<bool> deviceTmpVectorIsActive(totalActiveCount);
+	thrust::device_vector<CellType> deviceTmpVectorNodeType(totalActiveCount);
+
+	thrust::host_vector<double> hostTmpVectorLocX(totalActiveCount);
+	thrust::host_vector<double> hostTmpVectorLocY(totalActiveCount);
+	thrust::host_vector<double> hostTmpVectorLocZ(totalActiveCount);
+	thrust::host_vector<bool> hostTmpVectorIsActive(totalActiveCount);
+	thrust::host_vector<CellType> hostTmpVectorNodeType(totalActiveCount);
+
+	thrust::copy_if(
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes.nodeLocX.begin(),
+							nodes.nodeLocY.begin(), nodes.nodeLocZ.begin(),
+							nodes.nodeIsActive.begin(),
+							nodes.nodeCellType.begin())),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(nodes.nodeLocX.begin(),
+							nodes.nodeLocY.begin(), nodes.nodeLocZ.begin(),
+							nodes.nodeIsActive.begin(),
+							nodes.nodeCellType.begin())) + activeTotalNodeCount,
+			nodes.nodeIsActive.begin(),
+			thrust::make_zip_iterator(
+					thrust::make_tuple(deviceTmpVectorLocX.begin(),
+							deviceTmpVectorLocY.begin(),
+							deviceTmpVectorLocZ.begin(),
+							deviceTmpVectorIsActive.begin(),
+							deviceTmpVectorNodeType.begin())), isTrue());
+
+	hostTmpVectorLocX = deviceTmpVectorLocX;
+	hostTmpVectorLocY = deviceTmpVectorLocY;
+	hostTmpVectorLocZ = deviceTmpVectorLocZ;
+	hostTmpVectorIsActive = deviceTmpVectorIsActive;
+	hostTmpVectorNodeType = deviceTmpVectorNodeType;
+
+	int i, j;
+	std::vector < std::pair<uint, uint> > links;
+
+	//assert(cellTypesFromGPU.size() == nodes.currentActiveCellCount);
+	// using string stream is probably not the best solution,
+	// but I can't use c++ 11 features for backward compatibility
+	std::stringstream ss;
+	ss << std::setw(5) << std::setfill('0') << rank;
+	std::string scriptNameRank = ss.str();
+	std::string vtkFileName = scriptNameBase + scriptNameRank + ".vtk";
+	std::cout << "start to create vtk file" << vtkFileName << std::endl;
+	std::ofstream fs;
+	fs.open(vtkFileName.c_str());
+
+	//int totalNNum = getTotalNodeCount();
+	//int LNum = 0;
+	//int NNum;
+	fs << "# vtk DataFile Version 3.0" << std::endl;
+	fs << "Lines and points representing subcelluar element cells "
+			<< std::endl;
+	fs << "ASCII" << std::endl;
+	fs << std::endl;
+	fs << "DATASET UNSTRUCTURED_GRID" << std::endl;
+	fs << "POINTS " << totalActiveCount << " float" << std::endl;
+
+	uint counterForLink = 0;
+	for (i = 0; i < totalActiveCount; i++) {
+		fs << hostTmpVectorLocX[i] << " " << hostTmpVectorLocY[i] << " "
+				<< hostTmpVectorLocZ[i] << std::endl;
+		for (j = 0; j < totalActiveCount; j++) {
+			if (compuDist(hostTmpVectorLocX[i], hostTmpVectorLocY[i],
+					hostTmpVectorLocZ[i], hostTmpVectorLocX[j],
+					hostTmpVectorLocY[j], hostTmpVectorLocZ[j])
+					<= intraLinkDisplayRange) {
+				// have this extra if because we don't want to include visualization for inter-cell interaction
+				if (hostTmpVectorNodeType[i] == hostTmpVectorNodeType[j]) {
+					links.push_back(std::make_pair<uint, uint>(i, j));
+					counterForLink++;
+				}
+			}
+
+		}
+	}
+	fs << std::endl;
+	fs << "CELLS " << counterForLink << " " << 3 * counterForLink << std::endl;
+	uint linkSize = links.size();
+	for (uint i = 0; i < linkSize; i++) {
+		fs << 2 << " " << links[i].first << " " << links[i].second << std::endl;
+	}
+	uint LNum = links.size();
+	fs << "CELL_TYPES " << LNum << endl;
+	for (i = 0; i < LNum; i++) {
+		fs << "3" << endl;
+	}
+	fs << "POINT_DATA " << totalActiveCount << endl;
+	fs << "SCALARS point_scalars float" << endl;
+	fs << "LOOKUP_TABLE default" << endl;
+
+	//for (i = 0; i < nodes.currentActiveCellCount; i++) {
+	//	uint activeNodeCount = hostActiveCountOfCells[i];
+	//	for (j = 0; j < activeNodeCount; j++) {
+	//		fs << i << endl;
+	//	}
+	//}
+
+	for (i = 0; i < totalActiveCount; i++) {
+		if (hostTmpVectorNodeType[i] == Boundary) {
+			fs << 1 << endl;
+		} else if (hostTmpVectorNodeType[i] == Profile) {
+			fs << 2 << endl;
+		} else if (hostTmpVectorNodeType[i] == ECM) {
+			fs << 3 << endl;
+		} else if (hostTmpVectorNodeType[i] == FNM) {
+			fs << 4 << endl;
+		} else if (hostTmpVectorNodeType[i] == MX) {
+			fs << 5 << endl;
+		}
 	}
 
 	fs.flush();

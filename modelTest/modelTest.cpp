@@ -169,6 +169,21 @@ void generateBeakProfileInitInfo(std::vector<CellType> &cellTypes,
 			initNodeCount3.begin(), initNodeCount3.end());
 }
 
+void generateSimulationInitData(std::vector<CellType> &cellTypes,
+		std::vector<uint> &numOfInitActiveNodesOfCells,
+		std::vector<double> &initBdryCellNodePosX,
+		std::vector<double> &initBdryCellNodePosY,
+		std::vector<double> &initProfileNodePosX,
+		std::vector<double> &initProfileNodePosY,
+		std::vector<double> &initECMNodePosX,
+		std::vector<double> &initECMNodePosY,
+		std::vector<double> &initFNMCellNodePosX,
+		std::vector<double> &initFNMCellNodePosY,
+		std::vector<double> &initMXCellNodePosX,
+		std::vector<double> &initMXCellNodePosY) {
+
+}
+
 int main() {
 
 	cudaSetDevice(myDeviceID);

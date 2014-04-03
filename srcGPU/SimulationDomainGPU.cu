@@ -318,7 +318,7 @@ void SimulationDomainGPU::initialCellsOfFiveTypes(
 	// array size of initial active node count of cells array.
 	uint initNodeCountSize = numOfInitActiveNodesOfCells.size();
 	// two sizes must match.
-	assert(cellTypeSize == initNodeCountSize);
+	// assert(cellTypeSize == initNodeCountSize);
 	// size of X and Y must match.
 	assert(bdryNodeCountX == bdryNodeCountY);
 	assert(ECMNodeCountX == ECMNodeCountY);

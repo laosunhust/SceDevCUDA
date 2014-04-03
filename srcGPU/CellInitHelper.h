@@ -17,6 +17,32 @@ const double numericalErrorEps = 1.0e-10;
 
 using namespace std;
 
+struct RawDataInput {
+	vector<CVector> bdryNodes;
+	vector<CVector> profileNodes;
+	vector<CVector> FNMCellCenters;
+	vector<CVector> MXCellCenters;
+	vector<CVector> ECMCenters;
+	vector<double> ECMAngles;
+	vector<CVector> initCellNodePoss;
+	vector<CVector> initECMNodePoss;
+};
+
+struct SimulationInitData {
+	std::vector<CellType> cellTypes;
+	std::vector<uint> numOfInitActiveNodesOfCells;
+	std::vector<double> initBdryCellNodePosX;
+	std::vector<double> initBdryCellNodePosY;
+	std::vector<double> initProfileNodePosX;
+	std::vector<double> initProfileNodePosY;
+	std::vector<double> initECMNodePosX;
+	std::vector<double> initECMNodePosY;
+	std::vector<double> initFNMCellNodePosX;
+	std::vector<double> initFNMCellNodePosY;
+	std::vector<double> initMXCellNodePosX;
+	std::vector<double> initMXCellNodePosY;
+};
+
 /*
  * This class helps the simulation domain to determine
  * center position of a cell and its cell type.
@@ -403,11 +429,15 @@ class CellInitHelper {
 			CVector centerPos);
 
 public:
+
 	CellInitHelper();
 	virtual ~CellInitHelper();
 
 	vector<CellPlacementInfo> obtainPreciseCellInfoArray(double interval,
 			double deformRatio);
+
+	vector<CVector> rotate2D(vector<CVector> &initECMNodePoss, double angle);
+
 	void generateBoundaryCellNodesArray(vector<CVector> &bdryNodes,
 			double interval);
 	void generateThreeInputCellInfoArrays(vector<CVector> &bdryNodes,
@@ -423,6 +453,9 @@ public:
 			vector<double> &initMXCellNodePosY, vector<CVector> &bdryNodes,
 			vector<CVector> &FNMCellCenters, vector<CVector> &MXCellCenters,
 			vector<CVector> &initCellNodePoss);
+
+	void initInputsV2(SimulationInitData &initData, RawDataInput &rawData);
+
 };
 
 #endif /* CELLINITHELPER_H_ */

@@ -34,7 +34,7 @@ void CellInitHelper::initPrecisionBoundaryPoints() {
 	CVector P11(346, 250, 0);
 	CVector P12(276, 56, 0);
 	//CVector P13(292, 264, 0);
-	CVector P13(305,275,0);
+	CVector P13(305, 275, 0);
 	CVector P14(271, 207, 0);
 	CVector P15(249, 97, 0);
 	initPoints.clear();
@@ -529,7 +529,8 @@ void CellInitHelper::initInputsFromCellInfoArray(vector<CellType> &cellTypes,
 	uint maxNodePerCell =
 			globalConfigVars.getConfigValue("MaxNodePerCell").toInt();
 	uint initNodePerCell = initCellNodePoss.size();
-	uint requiredSpaceForBdry = ceil((double)bdryNodes.size() / maxNodePerCell);
+	uint requiredSpaceForBdry = ceil(
+			(double) bdryNodes.size() / maxNodePerCell);
 	uint requiredTotalSpaceBdry = maxNodePerCell * requiredSpaceForBdry;
 	initBdryCellNodePosX.resize(requiredTotalSpaceBdry, 0.0);
 	initBdryCellNodePosY.resize(requiredTotalSpaceBdry, 0.0);
@@ -618,6 +619,138 @@ void CellInitHelper::initInputsFromCellInfoArray(vector<CellType> &cellTypes,
 	cout << "finished init inputs" << endl;
 }
 
+/**
+ * Initialize inputs for five different components.
+ */
+void CellInitHelper::initInputsV2(SimulationInitData &initData,
+		RawDataInput &rawData) {
+
+	// step1: clean those init data.
+	initData.cellTypes.clear();
+	initData.numOfInitActiveNodesOfCells.clear();
+	initData.initBdryCellNodePosX.clear();
+	initData.initBdryCellNodePosY.clear();
+	initData.initProfileNodePosX.clear();
+	initData.initProfileNodePosY.clear();
+	initData.initECMNodePosX.clear();
+	initData.initECMNodePosY.clear();
+	initData.initFNMCellNodePosX.clear();
+	initData.initFNMCellNodePosY.clear();
+	initData.initMXCellNodePosX.clear();
+	initData.initMXCellNodePosY.clear();
+
+	uint FnmCellCount = rawData.FNMCellCenters.size();
+	uint MxCellCount = rawData.MXCellCenters.size();
+	uint ECMCount = rawData.ECMCenters.size();
+
+	uint maxNodePerCell =
+			globalConfigVars.getConfigValue("MaxNodePerCell").toInt();
+	uint maxNodePerECM =
+			globalConfigVars.getConfigValue("MaxNodePerECM").toInt();
+
+	uint initTotalCellCount = rawData.initCellNodePoss.size();
+	uint initTotalECMCount = rawData.ECMCenters.size();
+	initData.initBdryCellNodePosX.resize(rawData.bdryNodes.size(), 0.0);
+	initData.initBdryCellNodePosY.resize(rawData.bdryNodes.size(), 0.0);
+	initData.initProfileNodePosX.resize(rawData.profileNodes.size());
+	initData.initProfileNodePosY.resize(rawData.profileNodes.size());
+	initData.initECMNodePosX.resize(maxNodePerECM * ECMCount);
+	initData.initECMNodePosY.resize(maxNodePerECM * ECMCount);
+	initData.initFNMCellNodePosX.resize(maxNodePerCell * FnmCellCount, 0.0);
+	initData.initFNMCellNodePosY.resize(maxNodePerCell * FnmCellCount, 0.0);
+	initData.initMXCellNodePosX.resize(maxNodePerCell * MxCellCount, 0.0);
+	initData.initMXCellNodePosY.resize(maxNodePerCell * MxCellCount, 0.0);
+
+	for (uint i = 0; i < FnmCellCount; i++) {
+		initData.cellTypes.push_back(FNM);
+		initData.numOfInitActiveNodesOfCells.push_back(initTotalCellCount);
+	}
+
+	cout << "after fnm calculation, size of cellType is now "
+			<< initData.cellTypes.size() << endl;
+
+	for (uint i = 0; i < MxCellCount; i++) {
+		initData.cellTypes.push_back(MX);
+		initData.numOfInitActiveNodesOfCells.push_back(initTotalCellCount);
+	}
+
+	cout << "after mx calculation, size of cellType is now "
+			<< initData.cellTypes.size() << endl;
+
+	cout << "begin init bdry pos:" << endl;
+
+	cout << "size of bdryNodes is " << rawData.bdryNodes.size() << endl;
+	cout << "size of initBdryCellNodePos = "
+			<< initData.initBdryCellNodePosX.size() << endl;
+
+	//int jj;
+	//cin>>jj;
+
+	for (uint i = 0; i < rawData.bdryNodes.size(); i++) {
+		initData.initBdryCellNodePosX[i] = rawData.bdryNodes[i].x;
+		initData.initBdryCellNodePosY[i] = rawData.bdryNodes[i].y;
+		//cout << "(" << initBdryCellNodePosX[i] << "," << initBdryCellNodePosY[i]
+		//		<< ")" << endl;
+	}
+
+	for (uint i = 0; i < rawData.profileNodes.size(); i++) {
+		initData.initProfileNodePosX[i] = rawData.profileNodes[i].x;
+		initData.initProfileNodePosX[i] = rawData.profileNodes[i].y;
+		//cout << "(" << initBdryCellNodePosX[i] << "," << initBdryCellNodePosY[i]
+		//		<< ")" << endl;
+	}
+
+	uint index;
+	cout << "begin init fnm pos:" << endl;
+	cout << "current size is" << initData.initFNMCellNodePosX.size() << endl;
+	cout << "try to resize to: " << maxNodePerCell * FnmCellCount << endl;
+
+	cout << "size of fnm pos: " << initData.initFNMCellNodePosX.size() << endl;
+
+	cout.flush();
+
+	uint ECMInitNodeCount = rawData.initECMNodePoss.size();
+	for (uint i = 0; i < ECMCount; i++) {
+		vector<CVector> rotatedCoords = rotate2D(rawData.initECMNodePoss,
+				rawData.ECMAngles[i]);
+		for (uint j = 0; j < ECMInitNodeCount; j++) {
+			index = i * maxNodePerECM + j;
+			initData.initECMNodePosX[index] = rawData.ECMCenters[i].x
+					+ rotatedCoords[j].x;
+			initData.initECMNodePosY[index] = rawData.ECMCenters[i].y
+					+ rotatedCoords[j].y;
+		}
+	}
+
+	for (uint i = 0; i < FnmCellCount; i++) {
+		for (uint j = 0; j < initTotalCellCount; j++) {
+			index = i * maxNodePerCell + j;
+			initData.initFNMCellNodePosX[index] = rawData.FNMCellCenters[i].x
+					+ rawData.initCellNodePoss[j].x;
+			initData.initFNMCellNodePosY[index] = rawData.FNMCellCenters[i].y
+					+ rawData.initCellNodePoss[j].y;
+			//cout << "(" << initData.initFNMCellNodePosX[index] << ","
+			//		<< initData.initFNMCellNodePosY[index] << ")" << endl;
+		}
+	}
+
+	cout << "begin init mx pos:" << endl;
+
+	for (uint i = 0; i < MxCellCount; i++) {
+		for (uint j = 0; j < initTotalCellCount; j++) {
+			index = i * maxNodePerCell + j;
+			initData.initMXCellNodePosX[index] = rawData.MXCellCenters[i].x
+					+ rawData.initCellNodePoss[j].x;
+			initData.initMXCellNodePosY[index] = rawData.MXCellCenters[i].y
+					+ rawData.initCellNodePoss[j].y;
+			//cout << "(" << initData.initMXCellNodePosX[index] << ","
+			//		<< initData.initMXCellNodePosY[index] << ")" << endl;
+		}
+	}
+
+	cout << "finished init inputs" << endl;
+}
+
 //cout << "before debug:" << endl;
 
 void CellInitHelper::generateThreeInputCellInfoArrays(
@@ -649,6 +782,29 @@ void CellInitHelper::generateThreeInputCellInfoArrays(
 			<< "Number of MX cells: " << MXCellCenters.size()
 			<< " and number of FNM cells:" << FNMCellCenters.size() << endl;
 
+}
+
+vector<CVector> CellInitHelper::rotate2D(vector<CVector> &initECMNodePoss,
+		double angle) {
+	uint inputVectorSize = initECMNodePoss.size();
+	CVector centerPosOfInitVector = CVector(0);
+	for (uint i = 0; i < inputVectorSize; i++) {
+		centerPosOfInitVector = centerPosOfInitVector + initECMNodePoss[i];
+	}
+	centerPosOfInitVector = centerPosOfInitVector / inputVectorSize;
+	for (uint i = 0; i < inputVectorSize; i++) {
+		initECMNodePoss[i] = initECMNodePoss[i] - centerPosOfInitVector;
+	}
+	vector<CVector> result;
+	for (uint i = 0; i < inputVectorSize; i++) {
+		CVector posNew;
+		posNew.x = cos(angle) * initECMNodePoss[i].x
+				- sin(angle) * initECMNodePoss[i].y;
+		posNew.y = sin(angle) * initECMNodePoss[i].x
+				+ cos(angle) * initECMNodePoss[i].y;
+		result.push_back(posNew);
+	}
+	return result;
 }
 
 CellInitHelper::~CellInitHelper() {

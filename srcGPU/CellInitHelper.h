@@ -428,6 +428,16 @@ class CellInitHelper {
 	CVector getPointGivenAngle(double currentAngle, double r,
 			CVector centerPos);
 
+	void generateProfileNodesArray(vector<CVector> &initProfileNodes,
+			double profileNodeInterval);
+
+	void generateRandomAngles(vector<double> &randomAngles,
+			int initProfileNodeSize);
+	void generateInitInitECMPos(vector<CVector> &initECMNodePoss,
+			int initNodeCountPerECM);
+	void generateECMCenters(vector<CVector> &ECMCenters,
+			vector<CVector> &CellCenters);
+
 public:
 
 	CellInitHelper();
@@ -454,8 +464,9 @@ public:
 			vector<CVector> &FNMCellCenters, vector<CVector> &MXCellCenters,
 			vector<CVector> &initCellNodePoss);
 
-	void initInputsV2(SimulationInitData &initData, RawDataInput &rawData);
-
+	RawDataInput generateRawInput();
+	SimulationInitData initInputsV2(RawDataInput &rawData);
+	SimulationInitData generateInput();
 };
 
 #endif /* CELLINITHELPER_H_ */

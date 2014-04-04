@@ -622,8 +622,9 @@ void CellInitHelper::initInputsFromCellInfoArray(vector<CellType> &cellTypes,
 /**
  * Initialize inputs for five different components.
  */
-void CellInitHelper::initInputsV2(SimulationInitData &initData,
-		RawDataInput &rawData) {
+SimulationInitData CellInitHelper::initInputsV2(RawDataInput &rawData) {
+
+	SimulationInitData initData;
 
 	// step1: clean those init data.
 	initData.cellTypes.clear();
@@ -747,8 +748,8 @@ void CellInitHelper::initInputsV2(SimulationInitData &initData,
 			//		<< initData.initMXCellNodePosY[index] << ")" << endl;
 		}
 	}
-
 	cout << "finished init inputs" << endl;
+	return initData;
 }
 
 //cout << "before debug:" << endl;
@@ -805,6 +806,75 @@ vector<CVector> CellInitHelper::rotate2D(vector<CVector> &initECMNodePoss,
 		result.push_back(posNew);
 	}
 	return result;
+}
+
+RawDataInput CellInitHelper::generateRawInput() {
+
+	RawDataInput rawData;
+	double cellCenterInterval = globalConfigVars.getConfigValue(
+			"Cell_Center_Interval").toDouble();
+	double bdryNodeInterval = globalConfigVars.getConfigValue(
+			"Bdry_Node_Interval").toDouble();
+	double profileNodeInterval = globalConfigVars.getConfigValue(
+			"Profile_Node_Interval").toDouble();
+	int initNodeCountPerECM = globalConfigVars.getConfigValue(
+			"InitECMNodeCount").toInt();
+
+	generateBoundaryCellNodesArray(rawData.bdryNodes, bdryNodeInterval);
+	generateProfileNodesArray(rawData.profileNodes, profileNodeInterval);
+	int initProfileNodeSize = rawData.profileNodes.size();
+	generateRandomAngles(rawData.ECMAngles, initProfileNodeSize);
+	generateInitInitECMPos(rawData.initECMNodePoss, initNodeCountPerECM);
+
+	initPrecisionBoundaryPoints();
+	transformBoundaryPoints();
+	initBoundaryLines(cellCenterInterval / 1.8);
+	vector<CVector> insideCellCenters = getCellCentersInside(
+			cellCenterInterval);
+	cout << "INSIDE CELLS: " << insideCellCenters.size() << endl;
+
+	for (unsigned int i = 0; i < insideCellCenters.size(); i++) {
+		CVector centerPos = insideCellCenters[i];
+		if (isMXType(centerPos)) {
+			rawData.MXCellCenters.push_back(centerPos);
+		} else {
+			rawData.FNMCellCenters.push_back(centerPos);
+		}
+	}
+
+	generateECMCenters(rawData.ECMCenters, insideCellCenters);
+
+	cout << "Number of boundary nodes: " << rawData.bdryNodes.size()
+			<< "Number of MX cells: " << rawData.MXCellCenters.size()
+			<< " and number of FNM cells:" << rawData.FNMCellCenters.size()
+			<< endl;
+
+	return rawData;
+}
+
+SimulationInitData CellInitHelper::generateInput() {
+	RawDataInput rawData = generateRawInput();
+	return initInputsV2(rawData);
+}
+//TODO
+void CellInitHelper::generateProfileNodesArray(
+		vector<CVector> &initProfileNodes, double profileNodeInterval) {
+
+}
+//TODO
+void CellInitHelper::generateRandomAngles(vector<double> &randomAngles,
+		int initProfileNodeSize) {
+
+}
+//TODO
+void CellInitHelper::generateInitInitECMPos(vector<CVector> &initECMNodePoss,
+		int initNodeCountPerECM) {
+
+}
+//TODO
+void CellInitHelper::generateECMCenters(vector<CVector> &ECMCenters,
+		vector<CVector> &CellCenters) {
+
 }
 
 CellInitHelper::~CellInitHelper() {

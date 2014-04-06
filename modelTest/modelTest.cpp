@@ -187,8 +187,10 @@ void generateSimulationInitData(std::vector<CellType> &cellTypes,
 int main() {
 
 	cudaSetDevice(myDeviceID);
-
-	ConfigParser parser;
+	//
+	srand (time(NULL));
+	//
+    ConfigParser 	parser;
 	std::string configFileName = "sceCell.config";
 	globalConfigVars = parser.parseConfigFile(configFileName);
 

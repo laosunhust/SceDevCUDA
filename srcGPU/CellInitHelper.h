@@ -12,6 +12,8 @@
 #include "GeoVector.h"
 #include <cmath>
 #include "SceCells.h"
+#include <time.h>
+#include <stdlib.h>
 
 const double numericalErrorEps = 1.0e-10;
 
@@ -437,6 +439,9 @@ class CellInitHelper {
 			int initNodeCountPerECM);
 	void generateECMCenters(vector<CVector> &ECMCenters,
 			vector<CVector> &CellCenters);
+
+	bool anyECMCenterTooClose(vector<CVector> &ecmCenters, CVector position);
+	bool anyCellCenterTooClose(vector<CVector> &cellCenters, CVector position);
 
 public:
 

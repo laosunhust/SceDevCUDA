@@ -88,10 +88,8 @@ void CellInitHelper::generateBoundaryCellNodesArray(vector<CVector> &bdryNodes,
 	CVector Point6 = CVector((249 - 142) / 10.0, (350 - 97) / 10.0, 0);
 	double tmpDiff1 = fabs(Point3.x - Point6.x);
 	double tmpDiff2 = fabs(Point3.y - Point6.y);
-	double radius = (tmpDiff1 * tmpDiff1 + tmpDiff2 * tmpDiff2) / 2.0
-			/ tmpDiff1;
 	CVector arcCenter = CVector(-4.97647, 25.3, 0);
-
+	double radius = Point6.x - arcCenter.x;
 	//fstream fs;
 
 	bdryNodes.clear();
@@ -860,21 +858,172 @@ SimulationInitData CellInitHelper::generateInput() {
 void CellInitHelper::generateProfileNodesArray(
 		vector<CVector> &initProfileNodes, double profileNodeInterval) {
 
+	// initPoints[5], initPoints[6];
+	// initPoints[6], initPoints[7];
+	// initPoints[7], initPoints[8];
+	// initPoints[8], initPoints[9];
+	// initPoints[9], initPoints[10]
+	// initPoints[10], initPoints[11];
+	// initPoints[11], initPoints[0];
+
+	vector<CVector> beginNodes;
+	beginNodes.push_back(initPoints[5]);
+	beginNodes.push_back(initPoints[6]);
+	beginNodes.push_back(initPoints[7]);
+	beginNodes.push_back(initPoints[8]);
+	beginNodes.push_back(initPoints[9]);
+	beginNodes.push_back(initPoints[10]);
+	beginNodes.push_back(initPoints[11]);
+	vector<CVector> endNodes;
+	endNodes.push_back(initPoints[6]);
+	endNodes.push_back(initPoints[7]);
+	endNodes.push_back(initPoints[8]);
+	endNodes.push_back(initPoints[9]);
+	endNodes.push_back(initPoints[10]);
+	endNodes.push_back(initPoints[11]);
+	endNodes.push_back(initPoints[0]);
+
+	initProfileNodes.clear();
+	double delta = 1.0e-6;
+	vector<CVector> dirVectors;
+	for (int i = 0; i < endNodes.size(); i++) {
+		dirVectors.push_back(endNodes[i] - beginNodes[i]);
+	}
+
+	vector<double> totalDistances;
+	for (int i = 0; i < dirVectors.size(); i++) {
+		totalDistances.push_back(Modul(dirVectors[i]));
+	}
+
+	vector<CVector> unitVectors;
+	for (int i = 0; i < dirVectors.size(); i++) {
+		unitVectors.push_back(dirVectors[i].getUnitVector());
+	}
+
+	vector<CVector> unitIncreases;
+	for (int i = 0; i < dirVectors.size(); i++) {
+		unitIncreases.push_back(unitVectors[i] * profileNodeInterval);
+	}
+
+	CVector tempPoint;
+	initProfileNodes.push_back(beginNodes[0]);
+	double remainFromPrevious = 0.0;
+	CVector startPt;
+	for (int i = 0; i < beginNodes.size(); i++) {
+		startPt = beginNodes[i]
+				+ (profileNodeInterval - remainFromPrevious) * unitIncreases[i];
+
+		double actualTotalDist = remainFromPrevious + totalDistances[i];
+		int numberOfPieces = actualTotalDist / profileNodeInterval;
+		for (int j = 0; j < numberOfPieces; j++) {
+			tempPoint = startPt + j * unitIncreases[i];
+			initProfileNodes.push_back(tempPoint);
+		}
+		remainFromPrevious = actualTotalDist
+				- numberOfPieces * profileNodeInterval;
+	}
 }
 //TODO
 void CellInitHelper::generateRandomAngles(vector<double> &randomAngles,
 		int initProfileNodeSize) {
-
+	static const double PI = acos(-1);
+	randomAngles.clear();
+	for (int i = 0; i < initProfileNodeSize; i++) {
+		double randomNum = rand() / (RAND_MAX + 1);
+		randomAngles.push_back(randomNum * 2.0 * PI);
+	}
 }
-//TODO
+/**
+ * Initially, ECM nodes are alignd vertically.
+ */
 void CellInitHelper::generateInitInitECMPos(vector<CVector> &initECMNodePoss,
 		int initNodeCountPerECM) {
-
+	initECMNodePoss.clear();
+	double ECMInitNodeInterval = globalConfigVars.getConfigValue(
+			"ECM_Init_Node_Interval").toDouble();
+	int numOfSegments = initNodeCountPerECM - 1;
+	double totalLength = ECMInitNodeInterval * numOfSegments;
+	if (numOfSegments % 2 == 0) {
+		CVector initPt = CVector(0, 0, 0);
+		initECMNodePoss.push_back(initPt);
+		for (int i = 1; i <= numOfSegments / 2; i++) {
+			CVector posSide = initPt + CVector(0, i * ECMInitNodeInterval, 0);
+			CVector negSide = initPt - CVector(0, i * ECMInitNodeInterval, 0);
+			initECMNodePoss.push_back(posSide);
+			initECMNodePoss.push_back(negSide);
+		}
+	} else {
+		CVector initPosPt = CVector(0, ECMInitNodeInterval / 2.0, 0);
+		CVector initNegPt = CVector(0, -ECMInitNodeInterval / 2.0, 0);
+		initECMNodePoss.push_back(initPosPt);
+		initECMNodePoss.push_back(initNegPt);
+		for (int i = 1; i <= numOfSegments / 2; i++) {
+			CVector posSide = initPosPt
+					+ CVector(0, i * ECMInitNodeInterval, 0);
+			CVector negSide = initNegPt
+					- CVector(0, i * ECMInitNodeInterval, 0);
+			initECMNodePoss.push_back(posSide);
+			initECMNodePoss.push_back(negSide);
+		}
+	}
 }
 //TODO
 void CellInitHelper::generateECMCenters(vector<CVector> &ECMCenters,
 		vector<CVector> &CellCenters) {
+	ECMCenters.clear();
+	vector<double> angles;
+	vector<CVector> vecs;
+	static const double PI = acos(-1);
 
+	int numberOfECMAroundCellCenter = globalConfigVars.getConfigValue(
+			"ECM_Around_Cell_Center").toInt();
+	double distFromCellCenter = globalConfigVars.getConfigValue(
+			"Dist_From_Cell_Center").toDouble();
+	double unitAngle = 2 * PI / numberOfECMAroundCellCenter;
+	for (int i = 0; i < numberOfECMAroundCellCenter; i++) {
+		angles.push_back(i * unitAngle);
+		CVector vec(sin(i * unitAngle), cos(i * unitAngle), 0);
+		vec = vec * distFromCellCenter;
+		vecs.push_back(vec);
+	}
+	for (int i = 0; i < CellCenters.size(); i++) {
+		for (int j = 0; j < numberOfECMAroundCellCenter; j++) {
+			CVector pos = CellCenters[i] + vecs[j];
+			if (anyCellCenterTooClose(CellCenters, pos)) {
+				continue;
+			}
+			if (anyECMCenterTooClose(ECMCenters, pos)) {
+				continue;
+			}
+			ECMCenters.push_back(pos);
+		}
+	}
+}
+
+bool CellInitHelper::anyCellCenterTooClose(vector<CVector> &cellCenters,
+		CVector position) {
+	static double MinDistToOtherCellCenters = globalConfigVars.getConfigValue(
+			"MinDistToCellCenter").toDouble();
+	int size = cellCenters.size();
+	for (int i = 0; i < size; i++) {
+		if (Modul(cellCenters[i] - position) < MinDistToOtherCellCenters) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool CellInitHelper::anyECMCenterTooClose(vector<CVector> &ecmCenters,
+		CVector position) {
+	static double MinDistToOtherECMCenters = globalConfigVars.getConfigValue(
+			"MinDistToECMCenter").toDouble();
+	int size = ecmCenters.size();
+	for (int i = 0; i < size; i++) {
+		if (Modul(ecmCenters[i] - position) < MinDistToOtherECMCenters) {
+			return true;
+		}
+	}
+	return false;
 }
 
 CellInitHelper::~CellInitHelper() {

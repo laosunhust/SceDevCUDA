@@ -8,6 +8,7 @@
 #include "CellInitHelper.h"
 
 CellInitHelper::CellInitHelper() {
+	isInitNodesInitializedFlag = false;
 	linEqn1 = StraightLineEquationNoneVertical(CVector(0, 20, 0),
 			CVector(10, 40, 0));
 	linEqn2 = StraightLineEquationNoneVertical(CVector(0, 10, 0),
@@ -18,7 +19,10 @@ CellInitHelper::CellInitHelper() {
 			CVector(20, 20, 0));
 }
 
-// Initialize 15 points with coordinate catched directly from snapshot
+/**
+ * These are original coordinates that we obtained from the experimental data.
+ * Initialize 15 points with coordinate catched directly from snapshot
+ */
 void CellInitHelper::initPrecisionBoundaryPoints() {
 
 	CVector P1(242, 26, 0);
@@ -53,6 +57,7 @@ void CellInitHelper::initPrecisionBoundaryPoints() {
 	initPoints.push_back(P13);
 	initPoints.push_back(P14);
 	initPoints.push_back(P15);
+	isInitNodesInitializedFlag = true;
 }
 
 void CellInitHelper::transformBoundaryPoints() {
@@ -624,20 +629,6 @@ SimulationInitData CellInitHelper::initInputsV2(RawDataInput &rawData) {
 
 	SimulationInitData initData;
 
-	// step1: clean those init data.
-	initData.cellTypes.clear();
-	initData.numOfInitActiveNodesOfCells.clear();
-	initData.initBdryCellNodePosX.clear();
-	initData.initBdryCellNodePosY.clear();
-	initData.initProfileNodePosX.clear();
-	initData.initProfileNodePosY.clear();
-	initData.initECMNodePosX.clear();
-	initData.initECMNodePosY.clear();
-	initData.initFNMCellNodePosX.clear();
-	initData.initFNMCellNodePosY.clear();
-	initData.initMXCellNodePosX.clear();
-	initData.initMXCellNodePosY.clear();
-
 	uint FnmCellCount = rawData.FNMCellCenters.size();
 	uint MxCellCount = rawData.MXCellCenters.size();
 	uint ECMCount = rawData.ECMCenters.size();
@@ -682,6 +673,9 @@ SimulationInitData CellInitHelper::initInputsV2(RawDataInput &rawData) {
 	cout << "size of initBdryCellNodePos = "
 			<< initData.initBdryCellNodePosX.size() << endl;
 
+	cout << "size of profileNodes is " << rawData.profileNodes.size() << endl;
+	cout << "size of initBdryCellNodePos = "
+			<< initData.initProfileNodePosX.size() << endl;
 	//int jj;
 	//cin>>jj;
 
@@ -694,7 +688,7 @@ SimulationInitData CellInitHelper::initInputsV2(RawDataInput &rawData) {
 
 	for (uint i = 0; i < rawData.profileNodes.size(); i++) {
 		initData.initProfileNodePosX[i] = rawData.profileNodes[i].x;
-		initData.initProfileNodePosX[i] = rawData.profileNodes[i].y;
+		initData.initProfileNodePosY[i] = rawData.profileNodes[i].y;
 		//cout << "(" << initBdryCellNodePosX[i] << "," << initBdryCellNodePosY[i]
 		//		<< ")" << endl;
 	}
@@ -733,7 +727,7 @@ SimulationInitData CellInitHelper::initInputsV2(RawDataInput &rawData) {
 		}
 	}
 
-	cout << "begin init mx pos:" << endl;
+	//cout << "begin init mx pos:" << endl;
 
 	for (uint i = 0; i < MxCellCount; i++) {
 		for (uint j = 0; j < initTotalCellCount; j++) {
@@ -746,7 +740,9 @@ SimulationInitData CellInitHelper::initInputsV2(RawDataInput &rawData) {
 			//		<< initData.initMXCellNodePosY[index] << ")" << endl;
 		}
 	}
-	cout << "finished init inputs" << endl;
+	cout << "finished init inputs, press any key to continue" << endl;
+	int jj;
+	cin >> jj;
 	return initData;
 }
 
@@ -806,7 +802,10 @@ vector<CVector> CellInitHelper::rotate2D(vector<CVector> &initECMNodePoss,
 	return result;
 }
 
-RawDataInput CellInitHelper::generateRawInput() {
+/**
+ * Generate RawDataInput.
+ */
+RawDataInput CellInitHelper::generateRawInput(std::string meshInput) {
 
 	RawDataInput rawData;
 	double cellCenterInterval = globalConfigVars.getConfigValue(
@@ -818,15 +817,19 @@ RawDataInput CellInitHelper::generateRawInput() {
 	int initNodeCountPerECM = globalConfigVars.getConfigValue(
 			"InitECMNodeCount").toInt();
 
-	generateBoundaryCellNodesArray(rawData.bdryNodes, bdryNodeInterval);
-	generateProfileNodesArray(rawData.profileNodes, profileNodeInterval);
-	int initProfileNodeSize = rawData.profileNodes.size();
-	generateRandomAngles(rawData.ECMAngles, initProfileNodeSize);
-	generateInitInitECMPos(rawData.initECMNodePoss, initNodeCountPerECM);
-
 	initPrecisionBoundaryPoints();
 	transformBoundaryPoints();
 	initBoundaryLines(cellCenterInterval / 1.8);
+
+	generateBoundaryCellNodesArray(rawData.bdryNodes, bdryNodeInterval);
+	cout << "finished generating boundary cell nodes array" << endl;
+	generateProfileNodesArray(rawData.profileNodes, profileNodeInterval);
+	cout << "finished generating profile nodes array" << endl;
+	int initProfileNodeSize = rawData.profileNodes.size();
+	generateRandomAngles(rawData.ECMAngles, initProfileNodeSize);
+	generateECMInitNodeInfo(rawData.initECMNodePoss, initNodeCountPerECM);
+	generateCellInitNodeInfo(rawData.initCellNodePoss, meshInput);
+
 	vector<CVector> insideCellCenters = getCellCentersInside(
 			cellCenterInterval);
 	cout << "INSIDE CELLS: " << insideCellCenters.size() << endl;
@@ -850,8 +853,8 @@ RawDataInput CellInitHelper::generateRawInput() {
 	return rawData;
 }
 
-SimulationInitData CellInitHelper::generateInput() {
-	RawDataInput rawData = generateRawInput();
+SimulationInitData CellInitHelper::generateInput(std::string meshInput) {
+	RawDataInput rawData = generateRawInput(meshInput);
 	return initInputsV2(rawData);
 }
 //TODO
@@ -866,7 +869,17 @@ void CellInitHelper::generateProfileNodesArray(
 	// initPoints[10], initPoints[11];
 	// initPoints[11], initPoints[0];
 
+	if (isInitNodesInitializedFlag == false) {
+		cerr
+				<< "Fatal error: This function must be called after boundary nodes are initialized. Exit!"
+				<< endl;
+		exit(0);
+	}
+
+	cout << "starting generating profile nodes:" << endl;
+
 	vector<CVector> beginNodes;
+	beginNodes.push_back(initPoints[4]);
 	beginNodes.push_back(initPoints[5]);
 	beginNodes.push_back(initPoints[6]);
 	beginNodes.push_back(initPoints[7]);
@@ -875,6 +888,7 @@ void CellInitHelper::generateProfileNodesArray(
 	beginNodes.push_back(initPoints[10]);
 	beginNodes.push_back(initPoints[11]);
 	vector<CVector> endNodes;
+	endNodes.push_back(initPoints[5]);
 	endNodes.push_back(initPoints[6]);
 	endNodes.push_back(initPoints[7]);
 	endNodes.push_back(initPoints[8]);
@@ -883,27 +897,33 @@ void CellInitHelper::generateProfileNodesArray(
 	endNodes.push_back(initPoints[11]);
 	endNodes.push_back(initPoints[0]);
 
+	cout << "finished init start and end points" << endl;
+
 	initProfileNodes.clear();
 	double delta = 1.0e-6;
 	vector<CVector> dirVectors;
 	for (int i = 0; i < endNodes.size(); i++) {
 		dirVectors.push_back(endNodes[i] - beginNodes[i]);
 	}
+	cout << "finished init dirvectors" << endl;
 
 	vector<double> totalDistances;
 	for (int i = 0; i < dirVectors.size(); i++) {
 		totalDistances.push_back(Modul(dirVectors[i]));
 	}
+	cout << "finished init totalDistantces" << endl;
 
 	vector<CVector> unitVectors;
 	for (int i = 0; i < dirVectors.size(); i++) {
 		unitVectors.push_back(dirVectors[i].getUnitVector());
 	}
+	cout << "finished unitVectors" << endl;
 
 	vector<CVector> unitIncreases;
 	for (int i = 0; i < dirVectors.size(); i++) {
 		unitIncreases.push_back(unitVectors[i] * profileNodeInterval);
 	}
+	cout << "finished init unitIncrease" << endl;
 
 	CVector tempPoint;
 	initProfileNodes.push_back(beginNodes[0]);
@@ -917,26 +937,63 @@ void CellInitHelper::generateProfileNodesArray(
 		int numberOfPieces = actualTotalDist / profileNodeInterval;
 		for (int j = 0; j < numberOfPieces; j++) {
 			tempPoint = startPt + j * unitIncreases[i];
+
 			initProfileNodes.push_back(tempPoint);
+			std::cout << "added a new point: ";
+			tempPoint.Print();
 		}
 		remainFromPrevious = actualTotalDist
 				- numberOfPieces * profileNodeInterval;
 	}
+	int jj;
+	cin >> jj;
 }
 //TODO
 void CellInitHelper::generateRandomAngles(vector<double> &randomAngles,
 		int initProfileNodeSize) {
-	static const double PI = acos(-1);
+	static const double PI = acos(-1.0);
 	randomAngles.clear();
 	for (int i = 0; i < initProfileNodeSize; i++) {
-		double randomNum = rand() / (RAND_MAX + 1);
+		double randomNum = rand() / ((double) RAND_MAX + 1);
 		randomAngles.push_back(randomNum * 2.0 * PI);
 	}
 }
+
+void CellInitHelper::generateCellInitNodeInfo(vector<CVector> &initPos,
+		std::string meshInput) {
+	fstream fs;
+	uint NNum, LNum, ENum;
+	uint i;
+	double tmp;
+	std::cout << "mesh input is :" << meshInput << std::endl;
+	fs.open(meshInput.c_str(), ios::in);
+	if (!fs.is_open()) {
+		std::string errString =
+				"Unable to load mesh in string input mode, meshname: "
+						+ meshInput
+						+ " ,possible reason is the file is not located in the project folder \n";
+		std::cout << errString;
+	}
+	fs >> NNum >> LNum >> ENum;
+	cout << "NNum = " << NNum << std::endl;
+
+	initPos.resize(NNum);
+
+	for (i = 0; i < NNum; i++) {
+		fs >> initPos[i].x >> initPos[i].y >> tmp;
+		initPos[i].x = initPos[i].x / 20.0;
+		initPos[i].y = initPos[i].y / 10.0;
+		initPos[i].Print();
+	}
+	int jj;
+	cin >> jj;
+	fs.close();
+}
+
 /**
  * Initially, ECM nodes are alignd vertically.
  */
-void CellInitHelper::generateInitInitECMPos(vector<CVector> &initECMNodePoss,
+void CellInitHelper::generateECMInitNodeInfo(vector<CVector> &initECMNodePoss,
 		int initNodeCountPerECM) {
 	initECMNodePoss.clear();
 	double ECMInitNodeInterval = globalConfigVars.getConfigValue(
@@ -973,11 +1030,11 @@ void CellInitHelper::generateECMCenters(vector<CVector> &ECMCenters,
 	ECMCenters.clear();
 	vector<double> angles;
 	vector<CVector> vecs;
-	static const double PI = acos(-1);
+	static const double PI = acos(-1.0);
 
-	int numberOfECMAroundCellCenter = globalConfigVars.getConfigValue(
+	const int numberOfECMAroundCellCenter = globalConfigVars.getConfigValue(
 			"ECM_Around_Cell_Center").toInt();
-	double distFromCellCenter = globalConfigVars.getConfigValue(
+	const double distFromCellCenter = globalConfigVars.getConfigValue(
 			"Dist_From_Cell_Center").toDouble();
 	double unitAngle = 2 * PI / numberOfECMAroundCellCenter;
 	for (int i = 0; i < numberOfECMAroundCellCenter; i++) {
@@ -1002,7 +1059,7 @@ void CellInitHelper::generateECMCenters(vector<CVector> &ECMCenters,
 
 bool CellInitHelper::anyCellCenterTooClose(vector<CVector> &cellCenters,
 		CVector position) {
-	static double MinDistToOtherCellCenters = globalConfigVars.getConfigValue(
+	double MinDistToOtherCellCenters = globalConfigVars.getConfigValue(
 			"MinDistToCellCenter").toDouble();
 	int size = cellCenters.size();
 	for (int i = 0; i < size; i++) {
@@ -1015,7 +1072,7 @@ bool CellInitHelper::anyCellCenterTooClose(vector<CVector> &cellCenters,
 
 bool CellInitHelper::anyECMCenterTooClose(vector<CVector> &ecmCenters,
 		CVector position) {
-	static double MinDistToOtherECMCenters = globalConfigVars.getConfigValue(
+	double MinDistToOtherECMCenters = globalConfigVars.getConfigValue(
 			"MinDistToECMCenter").toDouble();
 	int size = ecmCenters.size();
 	for (int i = 0; i < size; i++) {

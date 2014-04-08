@@ -68,6 +68,43 @@ SceCells::SceCells(SceNodes* nodesInput) {
 	growThreshold = 1.0 / (maxNodeOfOneCell - maxNodeOfOneCell / 2) + epsilon;
 }
 
+void SceCells_M::distributeBdryIsActiveInfo() {
+	thrust::fill(nodes->nodeIsActive.begin(),
+			nodes->nodeIsActive.begin() + beginPosOfEpiNode, true);
+}
+
+void SceCells_M::distributeProfileIsActiveInfo() {
+	thrust::fill(nodes->nodeIsActive.begin() + beginPosOfEpiNode,
+			nodes->nodeIsActive.begin() + beginPosOfEpiNode
+					+ nodes->currentActiveProfileNodeCount, true);
+}
+
+void SceCells_M::distributeECMIsActiveInfo() {
+	uint totalNodeCountForActiveECM = currentActiveECMCount * maxNodeOfECM;
+	thrust::counting_iterator < uint > countingBegin(0);
+	thrust::counting_iterator<uint> countingEnd(totalNodeCountForActiveECM);
+	thrust::fill(nodes->nodeIsActive.begin() + beginPosOfECMNode,
+			nodes->nodeIsActive.begin() + totalNodeCountForActiveECM
+					+ beginPosOfECMNode, true);
+}
+
+void SceCells_M::distributeCellIsActiveInfo() {
+	uint totalNodeCountForActiveCells = currentActiveCellCount
+			* maxNodeOfOneCell;
+	thrust::counting_iterator < uint > countingBegin(0);
+	thrust::counting_iterator<uint> countingEnd(totalNodeCountForActiveCells);
+	thrust::transform(
+			thrust::make_transform_iterator(countingBegin,
+					ModuloFunctor(maxNodeOfOneCell)),
+			thrust::make_transform_iterator(countingEnd,
+					ModuloFunctor(maxNodeOfOneCell)),
+			thrust::make_permutation_iterator(activeNodeCountOfThisCell.begin(),
+					make_transform_iterator(countingBegin,
+							DivideFunctor(maxNodeOfOneCell))),
+			nodes->nodeIsActive.begin() + beginPosOfCellsNode,
+			thrust::less<uint>());
+}
+
 /**
  * Mark cell node as either active or inactive.
  * left part of the node array will be active and right part will be inactive.
@@ -1203,6 +1240,7 @@ SceCells_M::SceCells_M(SceNodes* nodesInput) :
 	nodeYPosAddress = thrust::raw_pointer_cast(
 			&(nodes->nodeLocY[beginPosOfCellsNode]));
 
+	distributeIsCellRank();
 }
 
 /**
@@ -1569,12 +1607,19 @@ void SceCells_M::addPointIfScheduledToGrow() {
  */
 void SceCells_M::runAllCellLevelLogics(double dt, GrowthDistriMap &region1,
 		GrowthDistriMap &region2) {
+	std::cerr << "enter run all cell level logics" << std::endl;
 	computeCenterPos();
+	std::cerr << "after compute center position." << std::endl;
 	grow2DTwoRegions(dt, region1, region2);
+	std::cerr << "after grow cells" << std::endl;
 	distributeIsActiveInfo();
+	std::cerr << "after distribute is active info." << std::endl;
 	divide2DSimplified();
+	std::cerr << "after divide 2D simplified." << std::endl;
 	distributeIsActiveInfo();
+	std::cerr << "after distribute is active info." << std::endl;
 	allComponentsMove();
+	std::cerr << "after all components move." << std::endl;
 }
 
 void SceCells_M::allComponentsMove() {
@@ -1583,7 +1628,7 @@ void SceCells_M::allComponentsMove() {
 }
 
 /**
- * Mark cell node as either active or inactive.
+ * Mark cell node as either activdistributeIsActiveInfo()e or inactive.
  * left part of the node array will be active and right part will be inactive.
  * the threshold is defined by array @activeNodeCountOfThisCell.
  * e.g. activeNodeCountOfThisCell = {2,3} and  maxNodeOfOneCell = 5,
@@ -1591,35 +1636,31 @@ void SceCells_M::allComponentsMove() {
  * @Checked.
  */
 void SceCells_M::distributeIsActiveInfo() {
-	//uint totalNodeCountForActiveCells = currentActiveCellCount
-	//		* maxNodeOfOneCell;
-	thrust::counting_iterator < uint > countingBegin(0);
-	thrust::counting_iterator<uint> countingEnd(totalNodeCountForActiveCells);
-	thrust::transform(
-			thrust::make_transform_iterator(countingBegin,
-					ModuloFunctor(maxNodeOfOneCell)),
-			thrust::make_transform_iterator(countingEnd,
-					ModuloFunctor(maxNodeOfOneCell)),
-			thrust::make_permutation_iterator(activeNodeCountOfThisCell.begin(),
-					make_transform_iterator(countingBegin,
-							DivideFunctor(maxNodeOfOneCell))),
-			nodes->nodeIsActive.begin() + beginPosOfCells,
-			thrust::less<uint>());
+	std::cout << "before distribute bdry isActive" << std::endl;
+	distributeBdryIsActiveInfo();
+	std::cout << "before distribute profile isActive" << std::endl;
+	distributeProfileIsActiveInfo();
+	std::cout << "before distribute ecm isActive" << std::endl;
+	distributeECMIsActiveInfo();
+	std::cout << "before distribute cells isActive" << std::endl;
+	distributeCellIsActiveInfo();
 }
 
 void SceCells_M::distributeIsCellRank() {
-	//uint totalNodeCountForActiveCells = currentActiveCellCount
-	//		* maxNodeOfOneCell;
+	uint totalNodeCountForActiveCells = maxCellCount * maxNodeOfOneCell;
 	thrust::counting_iterator < uint > countingBegin(0);
 	thrust::counting_iterator<uint> countingCellEnd(
 			totalNodeCountForActiveCells);
+	std::cerr << "totalNodeCount for active cells "
+			<< totalNodeCountForActiveCells << std::endl;
 
-	thrust::counting_iterator<uint> countingECMEnd(countingECMEnd);
+	//thrust::counting_iterator<uint> countingECMEnd(countingECMEnd);
 
 	// only computes the cell ranks of cells. the rest remain unchanged.
 	thrust::transform(countingBegin, countingCellEnd,
 			nodes->nodeCellRank.begin() + beginPosOfCells,
 			DivideFunctor(maxNodeOfOneCell));
+	std::cerr << "finished cellRank transformation" << std::endl;
 }
 
 /**
@@ -1629,8 +1670,8 @@ void SceCells_M::distributeIsCellRank() {
  * @Checked.
  */
 void SceCells_M::computeCenterPos() {
-//uint totalNodeCountForActiveCells = currentActiveCellCount
-//		* maxNodeOfOneCell;
+	uint totalNodeCountForActiveCells = currentActiveCellCount
+			* maxNodeOfOneCell;
 	thrust::counting_iterator < uint > countingBegin(0);
 	thrust::counting_iterator<uint> countingEnd(totalNodeCountForActiveCells);
 	uint totalNumberOfActiveNodes = thrust::reduce(

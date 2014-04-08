@@ -1,6 +1,7 @@
 #include <iostream>
 #include "SimulationDomainGPU.h"
 #include "CellInitHelper.h"
+#include <stdlib.h>
 using namespace std;
 
 const int myDeviceID = 2;
@@ -135,62 +136,45 @@ void generateMXCellsInfo(std::vector<CellType> &cellTypes3,
 
 }
 
-void generateBeakProfileInitInfo(std::vector<CellType> &cellTypes,
-		std::vector<uint> &numOfInitNodesOfCells,
-		std::vector<double> &initBdryCellNodePosX,
-		std::vector<double> &initBdryCellNodePosY,
-		std::vector<double> &initFNMCellNodePosX,
-		std::vector<double> &initFNMCellNodePosY,
-		std::vector<double> &initMXCellNodePosX,
-		std::vector<double> &initMXCellNodePosY) {
+/*
+ void generateBeakProfileInitInfo(std::vector<CellType> &cellTypes,
+ std::vector<uint> &numOfInitNodesOfCells,
+ std::vector<double> &initBdryCellNodePosX,
+ std::vector<double> &initBdryCellNodePosY,
+ std::vector<double> &initFNMCellNodePosX,
+ std::vector<double> &initFNMCellNodePosY,
+ std::vector<double> &initMXCellNodePosX,
+ std::vector<double> &initMXCellNodePosY) {
 
-	std::vector<CellType> cellTypes1;
-	std::vector<CellType> cellTypes2;
-	std::vector<CellType> cellTypes3;
-	std::vector<uint> initNodeCount1;
-	std::vector<uint> initNodeCount2;
-	std::vector<uint> initNodeCount3;
-	generateBoundaryCellsInfo(cellTypes1, initNodeCount1, initBdryCellNodePosX,
-			initBdryCellNodePosY);
-	generateFNMCellsInfo(cellTypes2, initNodeCount2, initFNMCellNodePosX,
-			initFNMCellNodePosY);
-	generateMXCellsInfo(cellTypes3, initNodeCount3, initMXCellNodePosX,
-			initMXCellNodePosY);
-	cellTypes.clear();
-	numOfInitNodesOfCells.clear();
-	cellTypes.insert(cellTypes.end(), cellTypes1.begin(), cellTypes1.end());
-	cellTypes.insert(cellTypes.end(), cellTypes2.begin(), cellTypes2.end());
-	cellTypes.insert(cellTypes.end(), cellTypes3.begin(), cellTypes3.end());
-	numOfInitNodesOfCells.insert(numOfInitNodesOfCells.end(),
-			initNodeCount1.begin(), initNodeCount1.end());
-	numOfInitNodesOfCells.insert(numOfInitNodesOfCells.end(),
-			initNodeCount2.begin(), initNodeCount2.end());
-	numOfInitNodesOfCells.insert(numOfInitNodesOfCells.end(),
-			initNodeCount3.begin(), initNodeCount3.end());
-}
-
-void generateSimulationInitData(std::vector<CellType> &cellTypes,
-		std::vector<uint> &numOfInitActiveNodesOfCells,
-		std::vector<double> &initBdryCellNodePosX,
-		std::vector<double> &initBdryCellNodePosY,
-		std::vector<double> &initProfileNodePosX,
-		std::vector<double> &initProfileNodePosY,
-		std::vector<double> &initECMNodePosX,
-		std::vector<double> &initECMNodePosY,
-		std::vector<double> &initFNMCellNodePosX,
-		std::vector<double> &initFNMCellNodePosY,
-		std::vector<double> &initMXCellNodePosX,
-		std::vector<double> &initMXCellNodePosY) {
-
-}
+ std::vector<CellType> cellTypes1;
+ std::vector<CellType> cellTypes2;
+ std::vector<CellType> cellTypes3;
+ std::vector<uint> initNodeCount1;
+ std::vector<uint> initNodeCount2;
+ std::vector<uint> initNodeCount3;
+ generateBoundaryCellsInfo(cellTypes1, initNodeCount1, initBdryCellNodePosX,
+ initBdryCellNodePosY);
+ generateFNMCellsInfo(cellTypes2, initNodeCount2, initFNMCellNodePosX,
+ initFNMCellNodePosY);
+ generateMXCellsInfo(cellTypes3, initNodeCount3, initMXCellNodePosX,
+ initMXCellNodePosY);
+ cellTypes.clear();
+ numOfInitNodesOfCells.clear();
+ cellTypes.insert(cellTypes.end(), cellTypes1.begin(), cellTypes1.end());
+ cellTypes.insert(cellTypes.end(), cellTypes2.begin(), cellTypes2.end());
+ cellTypes.insert(cellTypes.end(), cellTypes3.begin(), cellTypes3.end());
+ numOfInitNodesOfCells.insert(numOfInitNodesOfCells.end(),
+ initNodeCount1.begin(), initNodeCount1.end());
+ numOfInitNodesOfCells.insert(numOfInitNodesOfCells.end(),
+ initNodeCount2.begin(), initNodeCount2.end());
+ numOfInitNodesOfCells.insert(numOfInitNodesOfCells.end(),
+ initNodeCount3.begin(), initNodeCount3.end());
+ }
+ */
 
 int main() {
-
+	srand (time(NULL));ConfigParser parser;
 	cudaSetDevice(myDeviceID);
-	//
-	srand (time(NULL));
-	//
-    ConfigParser 	parser;
 	std::string configFileName = "sceCell.config";
 	globalConfigVars = parser.parseConfigFile(configFileName);
 
@@ -213,78 +197,90 @@ int main() {
 	const int numOfTimeSteps = simulationTime / dt;
 	const int totalNumOfOutputFrame = TotalNumOfOutputFrames;
 	const int outputAnimationAuxVarible = numOfTimeSteps
-			/ totalNumOfOutputFrame;
+	/ totalNumOfOutputFrame;
 
-	double Cell_Center_Interval = globalConfigVars.getConfigValue(
-			"Cell_Center_Interval").toDouble();
-	double bdryNodeInterval = globalConfigVars.getConfigValue(
-			"Bdry_Node_Interval").toDouble();
-	double Cell_deformationRatio = globalConfigVars.getConfigValue(
-			"Cell_deformationRatio").toDouble();
 	CellInitHelper initHelper;
-	//vector<CellPlacementInfo> cellInfoArray = initHelper.obtainCellInfoArray(
-	//		1.0, 0.5/sqrt(55));
-	//vector<CellPlacementInfo> cellInfoArray =
-	//		initHelper.obtainPreciseCellInfoArray(Cell_Center_Interval,
-	//				Cell_deformationRatio);
-
-	vector<CVector> bdryNodes, FNMCellCenters, MXCellCenters;
-	initHelper.generateThreeInputCellInfoArrays(bdryNodes, FNMCellCenters,
-			MXCellCenters, Cell_Center_Interval, bdryNodeInterval);
-
-	std::vector<CellType> cellTypes;
-	std::vector<uint> numOfInitNodesOfCells;
-	std::vector<double> initBdryCellNodePosX;
-	std::vector<double> initBdryCellNodePosY;
-	std::vector<double> initFNMCellNodePosX;
-	std::vector<double> initFNMCellNodePosY;
-	std::vector<double> initMXCellNodePosX;
-	std::vector<double> initMXCellNodePosY;
-
-	vector<CVector> initNodePosFromMesh;
-	generateCellInitNodeInfo(loadMeshInput, initNodePosFromMesh);
-
-	initHelper.initInputsFromCellInfoArray(cellTypes, numOfInitNodesOfCells,
-			initBdryCellNodePosX, initBdryCellNodePosY, initFNMCellNodePosX,
-			initFNMCellNodePosY, initMXCellNodePosX, initMXCellNodePosY,
-			bdryNodes, FNMCellCenters, MXCellCenters, initNodePosFromMesh);
 
 	SimulationDomainGPU simuDomain;
+	SimulationInitData initData = initHelper.generateInput(loadMeshInput);
+	simuDomain.initialize_V2(initData);
 
-	// This is the previous version of cell initialization. depreciated.
-	//simuDomain.initializeCells(initCellNodePosX, initCellNodePosY, centerPosX,
-	//		centerPosY, numberOfCellSpaceReserveForBdry);
-	//simuDomain.initializeCellTypes(initTypes);
+	simuDomain.checkIfAllDataFieldsValid();
 
-	simuDomain.initialCellsOfThreeTypes(cellTypes, numOfInitNodesOfCells,
-			initBdryCellNodePosX, initBdryCellNodePosY, initFNMCellNodePosX,
-			initFNMCellNodePosY, initMXCellNodePosX, initMXCellNodePosY);
-
-	cout << "number of cell spaces reserved:" << cellTypes.size() << endl;
-
-	//int jj;
-	//cin >> jj;
 	for (int i = 0; i <= numOfTimeSteps; i++) {
+		cout<<"step number = "<<i<<endl;
 		if (i % outputAnimationAuxVarible == 0) {
-			simuDomain.outputVtkFilesWithColor(animationInput, i);
-			//double lengthDiff = simuDomain.cells.lengthDifference[20];
-			//double expectedLen = simuDomain.cells.expectedLength[20];
-			//double growthProgress = simuDomain.cells.growthProgress[20];
-			//double isGoingToDivide = simuDomain.cells.isDivided[20];
-			//cout << "length difference: " << lengthDiff << endl;
-			//cout << "expected length: " << expectedLen << endl;
-			//cout << "growth progress: " << growthProgress << endl;
-			//cout << "schedule to divide? " << isGoingToDivide << endl;
+			simuDomain.outputVtkFilesWithColor_v2(animationInput, i);
+			cout<<"finished output Animation"<<endl;
 		}
 		simuDomain.runAllLogic(dt);
-		//double cellGrowProgress = simuDomain.cells.growthProgress[0];
-		//bool cellIsCheduledToGrow = simuDomain.cells.isScheduledToGrow[0];
-		//double lastCheckPoint = simuDomain.cells.lastCheckPoint[0];
-		//if (cellIsCheduledToGrow) {
-		//	cout << "growth progress = " << cellGrowProgress << endl;
-		//	cout << "Is scheduled to grow?" << cellIsCheduledToGrow << endl;
-		//	cout << "last check point is " << lastCheckPoint << endl;
-		//}
 	}
-
 }
+
+//vector<CVector> initNodePosFromMesh;
+//generateCellInitNodeInfo(loadMeshInput, initNodePosFromMesh);
+
+//double Cell_Center_Interval = globalConfigVars.getConfigValue(
+//		"Cell_Center_Interval").toDouble();
+//double bdryNodeInterval = globalConfigVars.getConfigValue(
+//		"Bdry_Node_Interval").toDouble();
+//double Cell_deformationRatio = globalConfigVars.getConfigValue(
+//		"Cell_deformationRatio").toDouble();
+
+//vector<CellPlacementInfo> cellInfoArray = initHelper.obtainCellInfoArray(
+//		1.0, 0.5/sqrt(55));
+//vector<CellPlacementInfo> cellInfoArray =
+//		initHelper.obtainPreciseCellInfoArray(Cell_Center_Interval,
+//				Cell_deformationRatio);
+
+//vector<CVector> bdryNodes, FNMCellCenters, MXCellCenters;
+//initHelper.generateThreeInputCellInfoArrays(bdryNodes, FNMCellCenters,
+//MXCellCenters, Cell_Center_Interval, bdryNodeInterval
+//);
+
+//std::vector<CellType> cellTypes;
+//std::vector<uint> numOfInitNodesOfCells;
+//std::vector<double> initBdryCellNodePosX;
+//std::vector<double> initBdryCellNodePosY;
+//std::vector<double> initFNMCellNodePosX;
+//std::vector<double> initFNMCellNodePosY;
+//std::vector<double> initMXCellNodePosX;
+//std::vector<double> initMXCellNodePosY;
+
+//initHelper.initInputsFromCellInfoArray(cellTypes, numOfInitNodesOfCells,
+//		initBdryCellNodePosX, initBdryCellNodePosY, initFNMCellNodePosX,
+//		initFNMCellNodePosY, initMXCellNodePosX, initMXCellNodePosY,
+//		bdryNodes, FNMCellCenters, MXCellCenters, initNodePosFromMesh);
+
+// This is the previous version of cell initialization. depreciated.
+//simuDomain.initializeCells(initCellNodePosX, initCellNodePosY, centerPosX,
+//		centerPosY, numberOfCellSpaceReserveForBdry);
+//simuDomain.initializeCellTypes(initTypes);
+
+//simuDomain.initialCellsOfThreeTypes(cellTypes, numOfInitNodesOfCells,
+//		initBdryCellNodePosX, initBdryCellNodePosY, initFNMCellNodePosX,
+//		initFNMCellNodePosY, initMXCellNodePosX, initMXCellNodePosY);
+
+//cout << "number of cell spaces reserved:" << cellTypes.size() << endl;
+
+//int jj;
+//cin >> jj;
+
+//double lengthDiff = simuDomain.cells.lengthDifference[20];
+//double expectedLen = simuDomain.cells.expectedLength[20];
+//double growthProgress = simuDomain.cells.growthProgress[20];
+//double isGoingToDivide = simuDomain.cells.isDivided[20];
+//cout << "length difference: " << lengthDiff << endl;
+//cout << "expected length: " << expectedLen << endl;
+//cout << "growth progress: " << growthProgress << endl;
+//cout << "schedule to divide? " << isGoingToDivide << endl;
+
+//double cellGrowProgress = simuDomain.cells.growthProgress[0];
+//bool cellIsCheduledToGrow = simuDomain.cells.isScheduledToGrow[0];
+//double lastCheckPoint = simuDomain.cells.lastCheckPoint[0];
+//if (cellIsCheduledToGrow) {
+//	cout << "growth progress = " << cellGrowProgress << endl;
+//	cout << "Is scheduled to grow?" << cellIsCheduledToGrow << endl;
+//	cout << "last check point is " << lastCheckPoint << endl;
+//}
+

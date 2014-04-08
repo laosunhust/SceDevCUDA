@@ -49,7 +49,7 @@ if(CUDA_FOUND)
         include_directories(${CUDA_INCLUDE_DIRS})
 endif (CUDA_FOUND)
 
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}; -gencode arch=compute_20,code=sm_20)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS}; -DTHRUST_DEBUG -gencode arch=compute_20,code=sm_20)
 CUDA_INCLUDE_DIRECTORIES(
 	${CMAKE_SOURCE_DIR}
 	${CUDA_INSTALL_PREFIX}/include

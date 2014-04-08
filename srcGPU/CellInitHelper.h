@@ -435,13 +435,17 @@ class CellInitHelper {
 
 	void generateRandomAngles(vector<double> &randomAngles,
 			int initProfileNodeSize);
-	void generateInitInitECMPos(vector<CVector> &initECMNodePoss,
+	void generateCellInitNodeInfo(vector<CVector> &initPos,
+			std::string meshInput);
+	void generateECMInitNodeInfo(vector<CVector> &initECMNodePoss,
 			int initNodeCountPerECM);
 	void generateECMCenters(vector<CVector> &ECMCenters,
 			vector<CVector> &CellCenters);
 
 	bool anyECMCenterTooClose(vector<CVector> &ecmCenters, CVector position);
 	bool anyCellCenterTooClose(vector<CVector> &cellCenters, CVector position);
+
+	bool isInitNodesInitializedFlag;
 
 public:
 
@@ -469,9 +473,9 @@ public:
 			vector<CVector> &FNMCellCenters, vector<CVector> &MXCellCenters,
 			vector<CVector> &initCellNodePoss);
 
-	RawDataInput generateRawInput();
+	RawDataInput generateRawInput(std::string meshInput);
 	SimulationInitData initInputsV2(RawDataInput &rawData);
-	SimulationInitData generateInput();
+	SimulationInitData generateInput(std::string meshInput);
 };
 
 #endif /* CELLINITHELPER_H_ */

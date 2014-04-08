@@ -3,6 +3,7 @@
 
 #include "SceNodes.h"
 #include "SceCells.h"
+#include "CellInitHelper.h"
 
 #include <sstream>
 #include <iomanip>
@@ -18,8 +19,20 @@ class SimulationDomainGPU {
 	uint maxNodePerCell;
 	uint maxECMInDomain;
 	uint maxNodePerECM;
-	uint initECMCount;
+	//uint initECMCount;
 	double FinalToInitProfileNodeCountRatio;
+	void initialCellsOfFiveTypes(std::vector<CellType> &cellTypes,
+			std::vector<uint> &numOfInitActiveNodesOfCells,
+			std::vector<double> &initBdryCellNodePosX,
+			std::vector<double> &initBdryCellNodePosY,
+			std::vector<double> &initProfileNodePosX,
+			std::vector<double> &initProfileNodePosY,
+			std::vector<double> &initECMNodePosX,
+			std::vector<double> &initECMNodePosY,
+			std::vector<double> &initFNMCellNodePosX,
+			std::vector<double> &initFNMCellNodePosY,
+			std::vector<double> &initMXCellNodePosX,
+			std::vector<double> &initMXCellNodePosY);
 public:
 	SceNodes nodes;
 	SceCells cells;
@@ -81,22 +94,13 @@ public:
 			std::vector<double> initFNMCellNodePosY,
 			std::vector<double> initMXCellNodePosX,
 			std::vector<double> initMXCellNodePosY);
-	void initialCellsOfFiveTypes(std::vector<CellType> &cellTypes,
-			std::vector<uint> &numOfInitActiveNodesOfCells,
-			std::vector<double> &initBdryCellNodePosX,
-			std::vector<double> &initBdryCellNodePosY,
-			std::vector<double> &initProfileNodePosX,
-			std::vector<double> &initProfileNodePosY,
-			std::vector<double> &initECMNodePosX,
-			std::vector<double> &initECMNodePosY,
-			std::vector<double> &initFNMCellNodePosX,
-			std::vector<double> &initFNMCellNodePosY,
-			std::vector<double> &initMXCellNodePosX,
-			std::vector<double> &initMXCellNodePosY);
+
+	void initialize_V2(SimulationInitData &initData);
 
 	void runAllLogic(double dt);
 	void outputVtkFilesWithColor(std::string scriptNameBase, int rank);
 	void outputVtkFilesWithColor_v2(std::string scriptNameBase, int rank);
+	void checkIfAllDataFieldsValid();
 };
 
 #endif

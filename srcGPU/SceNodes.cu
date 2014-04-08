@@ -259,6 +259,9 @@ SceNodes::SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
 	maxNodeOfOneCell = maxNodeInCell;
 	maxNodePerECM = maxNodeInECM;
 	maxECMCount = maxTotalECMCount;
+	this->maxProfileNodeCount = maxProfileNodeCount;
+	currentActiveProfileNodeCount = 0;
+	BdryNodeCount = totalBdryNodeCount;
 	currentActiveCellCount = 0;
 	maxTotalECMNodeCount = maxECMCount * maxNodePerECM;
 	currentActiveECM = 0;
@@ -290,21 +293,27 @@ SceNodes::SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
 
 	thrust::host_vector<CellType> hostTmpVector(maxTotalNodeCount);
 	thrust::host_vector<bool> hostTmpVector2(maxTotalNodeCount);
+	thrust::host_vector<int> hostTmpVector3(maxTotalNodeCount);
 	for (int i = 0; i < maxTotalNodeCount; i++) {
 		if (i < startPosProfile) {
 			hostTmpVector[i] = Boundary;
+			hostTmpVector3[i] = 0;
 		} else if (i < startPosECM) {
 			hostTmpVector[i] = Profile;
+			hostTmpVector3[i] = 0;
 		} else if (i < startPosCells) {
 			hostTmpVector[i] = ECM;
+			hostTmpVector3[i] = (i - startPosECM) / maxNodeInECM;
 		} else {
 			// all initialized as FNM
 			hostTmpVector[i] = FNM;
+			hostTmpVector3[i] = (i - startPosCells) / maxNodeOfOneCell;
 		}
 		nodeIsActive[i] = false;
 	}
 	nodeCellType = hostTmpVector;
 	nodeIsActive = hostTmpVector2;
+	nodeCellRank = hostTmpVector3;
 	copyParaToGPUConstMem();
 }
 
@@ -480,11 +489,11 @@ void SceNodes::buildBuckets2D(double minX, double maxX, double minY,
 					make_tuple(bucketKeys.begin(), bucketValues.begin())),
 			pointToBucketIndex2D(minX, maxX, minY, maxY, bucketSize));
 
-    // sort the points by their bucket index
+	// sort the points by their bucket index
 	thrust::sort_by_key(bucketKeys.begin(), bucketKeys.end(),
 			bucketValues.begin());
-    // for those nodes that are inactive, we key value of UINT_MAX will be returned.
-    // we need to removed those keys along with their values.
+	// for those nodes that are inactive, we key value of UINT_MAX will be returned.
+	// we need to removed those keys along with their values.
 	int numberOfOutOfRange = thrust::count(bucketKeys.begin(), bucketKeys.end(),
 			UINT_MAX);
 	bucketKeys.erase(bucketKeys.end() - numberOfOutOfRange, bucketKeys.end());
@@ -842,5 +851,6 @@ void SceNodes::calculateAndApplySceForces(double minX, double maxX, double minY,
 	extendBuckets2D(numberOfBucketsInXDim, numberOfBucketsInYDim);
 	std::cout << "in SceNodes, before apply sce forces:" << std::endl;
 	applySceForces(numberOfBucketsInXDim, numberOfBucketsInYDim);
+	std::cout << "in SceNodes, finished apply sce forces:" << std::endl;
 }
 

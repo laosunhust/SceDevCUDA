@@ -94,7 +94,7 @@ void GlobalConfigVars::printAll() {
 	//getchar();
 }
 
-std::string ConfigParser::removeLeadingAndTrailingZero(const std::string& str,
+std::string ConfigParser::removeLeadingAndTrailingSpace(const std::string& str,
 		const std::string& whitespace) {
 	const size_t strBegin = str.find_first_not_of(whitespace);
 	if (strBegin == std::string::npos)
@@ -123,11 +123,16 @@ std::vector<std::string> ConfigParser::splitLineByEqualSign(
 
 GlobalConfigVars ConfigParser::parseConfigFile(std::string configFileName) {
 	std::ifstream infile(configFileName.c_str());
+	if (!infile.is_open()) {
+		throw ConfigParserException("Fatal error: Config file not found!");
+	} else {
+
+	}
 	std::string line;
 	std::vector<std::string> tmpReading;
 	GlobalConfigVars result;
 	while (std::getline(infile, line)) {
-		std::string tmp = removeLeadingAndTrailingZero(line);
+		std::string tmp = removeLeadingAndTrailingSpace(line);
 		if (tmp.length() == 0) {
 			continue;
 		} else if (tmp[0] == '#') {
@@ -139,8 +144,9 @@ GlobalConfigVars ConfigParser::parseConfigFile(std::string configFileName) {
 					"Error in Config file: More than one equal sign found in one line :"
 							+ line);
 		}
-		std::string varName = removeLeadingAndTrailingZero(tmpReading[0]);
-		std::string varValue = removeLeadingAndTrailingZero(tmpReading[1]);
+		std::string varName = removeLeadingAndTrailingSpace(tmpReading[0]);
+		std::string varValue = removeLeadingAndTrailingSpace(tmpReading[1]);
+		varValue = removeTrailingSemicolon(varValue);
 		result.insertData(varName, varValue);
 	}
 	std::vector<ConfigVar> configVaribles = result.getConfigVars();
@@ -153,4 +159,14 @@ GlobalConfigVars ConfigParser::parseConfigFile(std::string configFileName) {
 		++it;
 	}
 	return result;
+}
+
+std::string ConfigParser::removeTrailingSemicolon(const std::string& str) {
+	std::string trailingSignal = " ;";
+	const size_t strBegin = 0;
+
+	const size_t strEnd = str.find_last_not_of(trailingSignal);
+	const size_t strRange = strEnd - strBegin + 1;
+
+	return str.substr(strBegin, strRange);
 }

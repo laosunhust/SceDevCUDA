@@ -4,7 +4,7 @@
 #include <stdlib.h>
 using namespace std;
 
-const int myDeviceID = 2;
+const int myDeviceID = 0;
 GlobalConfigVars globalConfigVars;
 
 void generateStringInputs(std::string &loadMeshInput,
@@ -173,7 +173,8 @@ void generateMXCellsInfo(std::vector<CellType> &cellTypes3,
  */
 
 int main() {
-	srand (time(NULL));ConfigParser parser;
+	srand(time(NULL));
+	ConfigParser parser;
 	cudaSetDevice(myDeviceID);
 	std::string configFileName = "sceCell.config";
 	globalConfigVars = parser.parseConfigFile(configFileName);
@@ -187,7 +188,7 @@ int main() {
 
 	std::string loadMeshInput;
 	std::string animationInput;
-	std::vector < std::string > boundaryMeshFileNames;
+	std::vector<std::string> boundaryMeshFileNames;
 	std::string animationFolder;
 	generateStringInputs(loadMeshInput, animationInput, animationFolder,
 			boundaryMeshFileNames);
@@ -197,7 +198,7 @@ int main() {
 	const int numOfTimeSteps = simulationTime / dt;
 	const int totalNumOfOutputFrame = TotalNumOfOutputFrames;
 	const int outputAnimationAuxVarible = numOfTimeSteps
-	/ totalNumOfOutputFrame;
+			/ totalNumOfOutputFrame;
 
 	CellInitHelper initHelper;
 
@@ -208,10 +209,10 @@ int main() {
 	simuDomain.checkIfAllDataFieldsValid();
 
 	for (int i = 0; i <= numOfTimeSteps; i++) {
-		cout<<"step number = "<<i<<endl;
+		cout << "step number = " << i << endl;
 		if (i % outputAnimationAuxVarible == 0) {
 			simuDomain.outputVtkFilesWithColor_v2(animationInput, i);
-			cout<<"finished output Animation"<<endl;
+			cout << "finished output Animation" << endl;
 		}
 		simuDomain.runAllLogic(dt);
 	}

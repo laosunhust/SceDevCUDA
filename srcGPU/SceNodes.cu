@@ -2,13 +2,17 @@
 
 __constant__ double sceInterPara[5];
 __constant__ double sceIntraPara[4];
+__constant__ double sceInterDiffPara[5];
+__constant__ double sceProfilePara[7];
+__constant__ double sceECMPara[5];
+__constant__ double sceDiffPara[5];
+
 double sceInterParaCPU[5];
 double sceIntraParaCPU[4];
-
-__constant__ double sceDiffPara[5];
+double sceInterDiffParaCPU[5];
+double sceProfileParaCPU[7];
+double sceECMParaCPU[5];
 double sceDiffParaCPU[5];
-
-// __constant__ uint sceNodeAuxInfo[5];
 
 __constant__ uint ProfilebeginPos;
 __constant__ uint ECMbeginPos;
@@ -39,8 +43,8 @@ OutputIterator expand(InputIterator1 first1, InputIterator1 last1,
 
 	// scatter the nonzero counts into their corresponding output positions
 	thrust::device_vector<difference_type> output_indices(output_size, 0);
-	thrust::scatter_if(thrust::counting_iterator < difference_type > (0),
-			thrust::counting_iterator < difference_type > (input_size),
+	thrust::scatter_if(thrust::counting_iterator<difference_type>(0),
+			thrust::counting_iterator<difference_type>(input_size),
 			output_offsets.begin(), first1, output_indices.begin());
 
 	// compute max-scan over the output indices, filling in the holes
@@ -56,199 +60,6 @@ OutputIterator expand(InputIterator1 first1, InputIterator1 last1,
 	// return output + output_size
 	thrust::advance(output, output_size);
 	return output;
-}
-
-SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell) {
-	maxCellCount = maxTotalCellCount;
-	maxNodeOfOneCell = maxNodeInCell;
-
-	currentActiveCellCount = 0;
-	// for now it is initialized as 3.
-	maxNodePerECM = 3;
-	// for now it is initialized as 0.
-	maxECMCount = 0;
-	maxTotalECMNodeCount = maxECMCount * maxNodePerECM;
-	currentActiveECM = 0;
-
-	// will need to change this value after we have more detail about ECM
-	maxTotalCellNodeCount = maxTotalCellCount * maxNodeOfOneCell;
-
-	//cellRanks.resize(maxTotalNodeCount);
-	//nodeRanks.resize(maxTotalNodeCount);
-	uint maxTotalNodeCount = maxTotalCellNodeCount + maxTotalECMNodeCount;
-	nodeIsActive.resize(maxTotalNodeCount, 0);
-	nodeLocX.resize(maxTotalNodeCount, 0.0);
-	nodeLocY.resize(maxTotalNodeCount, 0.0);
-	nodeLocZ.resize(maxTotalNodeCount, 0.0);
-	nodeVelX.resize(maxTotalNodeCount, 0.0);
-	nodeVelY.resize(maxTotalNodeCount, 0.0);
-	nodeVelZ.resize(maxTotalNodeCount, 0.0);
-	//thrust::counting_iterator<uint> countingBegin(0);
-	//thrust::counting_iterator<uint> countingEnd(maxTotalNodeCount);
-
-	// following block of code is depreciated due to a simplification of node global notation
-	//thrust::transform(
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
-	//						countingBegin)),
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.end(), nodeRanks.end(), countingEnd)),
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
-	//						countingBegin)), InitFunctor(maxCellCount));
-
-	ConfigParser parser;
-	std::string configFileName = "sceCell.config";
-	// globalConfigVars should be a global variable and defined in the main function.
-	globalConfigVars = parser.parseConfigFile(configFileName);
-	static const double U0 =
-			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
-					/ globalConfigVars.getConfigValue("InterCell_U0_DivFactor").toDouble();
-	static const double V0 =
-			globalConfigVars.getConfigValue("InterCell_V0_Original").toDouble()
-					/ globalConfigVars.getConfigValue("InterCell_V0_DivFactor").toDouble();
-	static const double k1 =
-			globalConfigVars.getConfigValue("InterCell_k1_Original").toDouble()
-					/ globalConfigVars.getConfigValue("InterCell_k1_DivFactor").toDouble();
-	static const double k2 =
-			globalConfigVars.getConfigValue("InterCell_k2_Original").toDouble()
-					/ globalConfigVars.getConfigValue("InterCell_k2_DivFactor").toDouble();
-	static const double interLinkEffectiveRange =
-			globalConfigVars.getConfigValue("InterCellLinkBreakRange").toDouble();
-
-	sceInterParaCPU[0] = U0;
-	sceInterParaCPU[1] = V0;
-	sceInterParaCPU[2] = k1;
-	sceInterParaCPU[3] = k2;
-	sceInterParaCPU[4] = interLinkEffectiveRange;
-
-	static const double U0_Intra =
-			globalConfigVars.getConfigValue("IntraCell_U0_Original").toDouble()
-					/ globalConfigVars.getConfigValue("IntraCell_U0_DivFactor").toDouble();
-	static const double V0_Intra =
-			globalConfigVars.getConfigValue("IntraCell_V0_Original").toDouble()
-					/ globalConfigVars.getConfigValue("IntraCell_V0_DivFactor").toDouble();
-	static const double k1_Intra =
-			globalConfigVars.getConfigValue("IntraCell_k1_Original").toDouble()
-					/ globalConfigVars.getConfigValue("IntraCell_k1_DivFactor").toDouble();
-	static const double k2_Intra =
-			globalConfigVars.getConfigValue("IntraCell_k2_Original").toDouble()
-					/ globalConfigVars.getConfigValue("IntraCell_k2_DivFactor").toDouble();
-	sceIntraParaCPU[0] = U0_Intra;
-	sceIntraParaCPU[1] = V0_Intra;
-	sceIntraParaCPU[2] = k1_Intra;
-	sceIntraParaCPU[3] = k2_Intra;
-
-	cudaMemcpyToSymbol(sceInterPara, sceInterParaCPU, 5 * sizeof(double));
-	cudaMemcpyToSymbol(sceIntraPara, sceIntraParaCPU, 4 * sizeof(double));
-	//std::cout << "U0 :" << sceIntraParaCPU[0] << std::endl;
-	//std::cout << "V0 :" << sceIntraParaCPU[1] << std::endl;
-	//std::cout << "k1 :" << sceIntraParaCPU[2] << std::endl;
-	//std::cout << "k2 :" << sceIntraParaCPU[3] << std::endl;
-	//std::cout << "Force parameters initialized" << std::endl;
-
-	//double constantsCopiesFromDevice[4];
-	//cudaMemcpyFromSymbol(constantsCopiesFromDevice, sceInterPara,
-	//		4 * sizeof(double));
-	//std::cout << "U0 From Device:" << constantsCopiesFromDevice[0] << std::endl;
-	//std::cout << "V0 From Device:" << constantsCopiesFromDevice[1] << std::endl;
-	//std::cout << "k1 From Device:" << constantsCopiesFromDevice[2] << std::endl;
-	//std::cout << "k2 From Device:" << constantsCopiesFromDevice[3] << std::endl;
-}
-
-SceNodes::SceNodes(uint maxTotalCellCount, uint maxNodeInCell,
-		uint maxTotalECMCount, uint maxNodeInECM) {
-	std::cout << "start creating SceNodes object" << std::endl;
-	maxCellCount = maxTotalCellCount;
-	maxNodeOfOneCell = maxNodeInCell;
-	maxNodePerECM = maxNodeInECM;
-	maxECMCount = maxTotalECMCount;
-	currentActiveCellCount = 0;
-	// for now it is initialized as 3.
-	maxNodePerECM = 3;
-	// for now it is initialized as 0.
-	maxECMCount = 0;
-	maxTotalECMNodeCount = maxECMCount * maxNodePerECM;
-	currentActiveECM = 0;
-
-	// will need to change this value after we have more detail about ECM
-	maxTotalCellNodeCount = maxTotalCellCount * maxNodeOfOneCell;
-
-	//cellRanks.resize(maxTotalNodeCount);
-	//nodeRanks.resize(maxTotalNodeCount);
-	std::cout << "before resizing vectors" << std::endl;
-	uint maxTotalNodeCount = maxTotalCellNodeCount + maxTotalECMNodeCount;
-	std::cout << "maxTotalNodeCount = " << maxTotalNodeCount << std::endl;
-	//thrust::host_vector<bool> nodeIsActiveHost
-	nodeIsActive.resize(maxTotalNodeCount);
-	std::cout << "nodeIsActive resize complete" << std::endl;
-	nodeLocX.resize(maxTotalNodeCount);
-	nodeLocY.resize(maxTotalNodeCount);
-	nodeLocZ.resize(maxTotalNodeCount);
-	nodeVelX.resize(maxTotalNodeCount);
-	nodeVelY.resize(maxTotalNodeCount);
-	nodeVelZ.resize(maxTotalNodeCount);
-	std::cout << "after resizing vectors" << std::endl;
-	//thrust::counting_iterator<uint> countingBegin(0);
-	//thrust::counting_iterator<uint> countingEnd(maxTotalNodeCount);
-
-	// following block of code is depreciated due to a simplification of node global notation
-	//thrust::transform(
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
-	//						countingBegin)),
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.end(), nodeRanks.end(), countingEnd)),
-	//		make_zip_iterator(
-	//				make_tuple(cellRanks.begin(), nodeRanks.begin(),
-	//						countingBegin)), InitFunctor(maxCellCount));
-
-	//ConfigParser parser;
-	//std::string configFileName = "sceCell.config";
-	// globalConfigVars should be a global variable and defined in the main function.
-	//globalConfigVars = parser.parseConfigFile(configFileName);
-	static const double U0 =
-			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
-					/ globalConfigVars.getConfigValue("InterCell_U0_DivFactor").toDouble();
-	static const double V0 =
-			globalConfigVars.getConfigValue("InterCell_V0_Original").toDouble()
-					/ globalConfigVars.getConfigValue("InterCell_V0_DivFactor").toDouble();
-	static const double k1 =
-			globalConfigVars.getConfigValue("InterCell_k1_Original").toDouble()
-					/ globalConfigVars.getConfigValue("InterCell_k1_DivFactor").toDouble();
-	static const double k2 =
-			globalConfigVars.getConfigValue("InterCell_k2_Original").toDouble()
-					/ globalConfigVars.getConfigValue("InterCell_k2_DivFactor").toDouble();
-	static const double interLinkEffectiveRange =
-			globalConfigVars.getConfigValue("InterCellLinkBreakRange").toDouble();
-
-	sceInterParaCPU[0] = U0;
-	sceInterParaCPU[1] = V0;
-	sceInterParaCPU[2] = k1;
-	sceInterParaCPU[3] = k2;
-	sceInterParaCPU[4] = interLinkEffectiveRange;
-
-	static const double U0_Intra =
-			globalConfigVars.getConfigValue("IntraCell_U0_Original").toDouble()
-					/ globalConfigVars.getConfigValue("IntraCell_U0_DivFactor").toDouble();
-	static const double V0_Intra =
-			globalConfigVars.getConfigValue("IntraCell_V0_Original").toDouble()
-					/ globalConfigVars.getConfigValue("IntraCell_V0_DivFactor").toDouble();
-	static const double k1_Intra =
-			globalConfigVars.getConfigValue("IntraCell_k1_Original").toDouble()
-					/ globalConfigVars.getConfigValue("IntraCell_k1_DivFactor").toDouble();
-	static const double k2_Intra =
-			globalConfigVars.getConfigValue("IntraCell_k2_Original").toDouble()
-					/ globalConfigVars.getConfigValue("IntraCell_k2_DivFactor").toDouble();
-	sceIntraParaCPU[0] = U0_Intra;
-	sceIntraParaCPU[1] = V0_Intra;
-	sceIntraParaCPU[2] = k1_Intra;
-	sceIntraParaCPU[3] = k2_Intra;
-
-	std::cout << "in SceNodes, before cuda memory copy to symbol:" << std::endl;
-	cudaMemcpyToSymbol(sceInterPara, sceInterParaCPU, 5 * sizeof(double));
-	cudaMemcpyToSymbol(sceIntraPara, sceIntraParaCPU, 4 * sizeof(double));
-	std::cout << "finished SceNodes:" << std::endl;
 }
 
 SceNodes::SceNodes(uint totalBdryNodeCount, uint maxProfileNodeCount,
@@ -364,6 +175,89 @@ void SceNodes::copyParaToGPUConstMem() {
 	cudaMemcpyToSymbol(cellNodeBeginPos, &startPosCells, sizeof(uint));
 	cudaMemcpyToSymbol(nodeCountPerECM, &maxNodePerECM, sizeof(uint));
 	cudaMemcpyToSymbol(nodeCountPerCell, &maxNodeOfOneCell, sizeof(uint));
+
+	static const double U0_Diff =
+			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_Diff_U0_DivFactor").toDouble();
+	static const double V0_Diff =
+			globalConfigVars.getConfigValue("InterCell_V0_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_Diff_V0_DivFactor").toDouble();
+	static const double k1_Diff =
+			globalConfigVars.getConfigValue("InterCell_k1_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_Diff_k1_DivFactor").toDouble();
+	static const double k2_Diff =
+			globalConfigVars.getConfigValue("InterCell_k2_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_Diff_k2_DivFactor").toDouble();
+	sceInterDiffParaCPU[0] = U0_Diff;
+	sceInterDiffParaCPU[1] = V0_Diff;
+	sceInterDiffParaCPU[2] = k1_Diff;
+	sceInterDiffParaCPU[3] = k2_Diff;
+	sceInterDiffParaCPU[4] = interLinkEffectiveRange;
+
+	static const double U0_Bdry =
+			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_Bdry_U0_DivFactor").toDouble();
+	static const double V0_Bdry =
+			globalConfigVars.getConfigValue("InterCell_V0_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_Bdry_V0_DivFactor").toDouble();
+	static const double k1_Bdry =
+			globalConfigVars.getConfigValue("InterCell_k1_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_Bdry_k1_DivFactor").toDouble();
+	static const double k2_Bdry =
+			globalConfigVars.getConfigValue("InterCell_k2_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_Bdry_k2_DivFactor").toDouble();
+	// 1.8 comes from standard
+	static const double neutralLength = globalConfigVars.getConfigValue(
+			"Bdry_base_neutral_dist").toDouble() / k2_Bdry
+			* globalConfigVars.getConfigValue("baseline_k_value").toDouble();
+
+	static const double linearParameter = globalConfigVars.getConfigValue(
+			"Profile_linear_parameter").toDouble();
+
+	sceProfileParaCPU[0] = U0_Bdry;
+	sceProfileParaCPU[1] = V0_Bdry;
+	sceProfileParaCPU[2] = k1_Bdry;
+	sceProfileParaCPU[3] = k2_Bdry;
+	sceProfileParaCPU[4] = interLinkEffectiveRange;
+	sceProfileParaCPU[5] = linearParameter;
+	sceProfileParaCPU[6] = neutralLength;
+
+	static const double U0_ECM =
+			globalConfigVars.getConfigValue("InterCell_U0_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_ECM_U0_DivFactor").toDouble();
+	static const double V0_ECM =
+			globalConfigVars.getConfigValue("InterCell_V0_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_ECM_V0_DivFactor").toDouble();
+	static const double k1_ECM =
+			globalConfigVars.getConfigValue("InterCell_k1_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_ECM_k1_DivFactor").toDouble();
+	static const double k2_ECM =
+			globalConfigVars.getConfigValue("InterCell_k2_Original").toDouble()
+					/ globalConfigVars.getConfigValue(
+							"InterCell_ECM_k2_DivFactor").toDouble();
+	sceECMParaCPU[0] = U0_ECM;
+	sceECMParaCPU[1] = V0_ECM;
+	sceECMParaCPU[2] = k1_ECM;
+	sceECMParaCPU[3] = k2_ECM;
+	sceECMParaCPU[4] = interLinkEffectiveRange;
+
+	cudaMemcpyToSymbol(sceProfilePara, sceProfileParaCPU, 7 * sizeof(double));
+
+	cudaMemcpyToSymbol(sceInterDiffPara, sceInterDiffParaCPU,
+			5 * sizeof(double));
+
+	cudaMemcpyToSymbol(sceECMPara, sceECMParaCPU, 5 * sizeof(double));
 	//std::cout << "finished SceNodes:" << std::endl;
 }
 
@@ -423,6 +317,135 @@ void SceNodes::addNewlyDividedCells(
 	currentActiveCellCount = currentActiveCellCount + addCellCount;
 }
 
+void SceNodes::initDimension(double domainMinX, double domainMaxX,
+		double domainMinY, double domainMaxY, double domainBucketSize) {
+	minX = domainMinX;
+	maxX = domainMaxX;
+	minY = domainMinY;
+	maxY = domainMaxY;
+	bucketSize = domainBucketSize;
+	numOfBucketsInXDim = (maxX - minX) / bucketSize + 1;
+	numOfBucketsInYDim = (maxY - minY) / bucketSize + 1;
+	totalBucketCount = numOfBucketsInXDim * numOfBucketsInYDim;
+
+	keyBegin.resize(totalBucketCount);
+	keyEnd.resize(totalBucketCount);
+
+	/*
+	 std::cout << "after initialization, values:" << std::endl;
+	 std::cout << "minX = " << minX << ", maxX = " << maxX << std::endl;
+	 std::cout << "minX = " << minX << ", maxX = " << maxX << std::endl;
+	 std::cout << "numOfBucketsInXDim = " << numOfBucketsInXDim
+	 << ", numOfBucketsInYDim = " << numOfBucketsInYDim << std::endl;
+	 std::cout << "totalBucketCount= " << totalBucketCount << std::endl;
+	 */
+
+	//int jj;
+	//std::cin >> jj;
+}
+
+std::vector<std::pair<uint, uint> > SceNodes::obtainNeighborPairs() {
+	std::vector<std::pair<uint, uint> > result;
+	thrust::host_vector<uint> keyBeginCPU = keyBegin;
+	thrust::host_vector<uint> keyEndCPU = keyEnd;
+	thrust::host_vector<uint> bucketKeysCPU = bucketKeys;
+	thrust::host_vector<uint> bucketValuesCPU = bucketValues;
+	thrust::host_vector<uint> bucketValuesExtendedCPU =
+			bucketValuesIncludingNeighbor;
+
+	int size = bucketKeysCPU.size();
+	for (int i = 0; i < size; i++) {
+		for (int j = keyBeginCPU[bucketKeysCPU[i]];
+				j < keyEndCPU[bucketKeysCPU[i]]; j++) {
+			//std::cout << "pair node 1: " << bucketValues[i] << ",pair node2: "
+			//		<< bucketValuesIncludingNeighbor[j] << std::endl;
+			result.push_back(
+					std::make_pair<uint, uint>(bucketValues[i],
+							bucketValuesIncludingNeighbor[j]));
+		}
+	}
+
+	return result;
+}
+
+void SceNodes::initValues(std::vector<double>& initBdryCellNodePosX,
+		std::vector<double>& initBdryCellNodePosY,
+		std::vector<double>& initProfileNodePosX,
+		std::vector<double>& initProfileNodePosY,
+		std::vector<double>& initECMNodePosX,
+		std::vector<double>& initECMNodePosY,
+		std::vector<double>& initFNMCellNodePosX,
+		std::vector<double>& initFNMCellNodePosY,
+		std::vector<double>& initMXCellNodePosX,
+		std::vector<double>& initMXCellNodePosY) {
+
+	uint FNMNodeCountX = initFNMCellNodePosX.size();
+	uint MXNodeCountX = initMXCellNodePosX.size();
+
+	uint beginAddressOfProfile = startPosProfile;
+	// find the begining position of ECM.
+	uint beginAddressOfECM = startPosECM;
+	// find the begining position of FNM cells.
+	uint beginAddressOfFNM = startPosCells;
+	// find the begining position of MX cells.
+	uint beginAddressOfMX = beginAddressOfFNM + FNMNodeCountX;
+
+	//std::cerr << "before copying arrays" << endl;
+
+	thrust::copy(initBdryCellNodePosX.begin(), initBdryCellNodePosX.end(),
+			nodeLocX.begin());
+	thrust::copy(initBdryCellNodePosY.begin(), initBdryCellNodePosY.end(),
+			nodeLocY.begin());
+
+	//std::cerr << "copy 1" << endl;
+
+	// copy x and y position of nodes of Profile to actual node position.
+	thrust::copy(initProfileNodePosX.begin(), initProfileNodePosX.end(),
+			nodeLocX.begin() + beginAddressOfProfile);
+	thrust::copy(initProfileNodePosY.begin(), initProfileNodePosY.end(),
+			nodeLocY.begin() + beginAddressOfProfile);
+
+	//std::cerr << "copy 2" << endl;
+
+	// copy x and y position of nodes of ECM to actual node position.
+	thrust::copy(initECMNodePosX.begin(), initECMNodePosX.end(),
+			nodeLocX.begin() + beginAddressOfECM);
+	thrust::copy(initECMNodePosY.begin(), initECMNodePosY.end(),
+			nodeLocY.begin() + beginAddressOfECM);
+
+	// debug
+	for (int i = 0; i < initECMNodePosX.size(); i++) {
+		assert(nodeLocX[i + beginAddressOfECM] == initECMNodePosX[i]);
+		assert(!isnan(initECMNodePosX[i]));
+	}
+
+	// std::cerr << "copy 3" << endl;
+
+	// copy x and y position of nodes of FNM cells to actual node position.
+	thrust::copy(initFNMCellNodePosX.begin(), initFNMCellNodePosX.end(),
+			nodeLocX.begin() + beginAddressOfFNM);
+	thrust::copy(initFNMCellNodePosY.begin(), initFNMCellNodePosY.end(),
+			nodeLocY.begin() + beginAddressOfFNM);
+
+	// std::cerr << "copy 4" << endl;
+
+	thrust::fill(nodeCellType.begin() + beginAddressOfFNM,
+			nodeCellType.begin() + beginAddressOfMX, FNM);
+
+	// copy x and y position of nodes of MX cells to actual node position.
+	thrust::copy(initMXCellNodePosX.begin(), initMXCellNodePosX.end(),
+			nodeLocX.begin() + beginAddressOfMX);
+	thrust::copy(initMXCellNodePosY.begin(), initMXCellNodePosY.end(),
+			nodeLocY.begin() + beginAddressOfMX);
+
+	//std::cerr << "after copying arrays" << endl;
+
+	thrust::fill(nodeCellType.begin() + beginAddressOfMX,
+			nodeCellType.begin() + beginAddressOfMX + MXNodeCountX, MX);
+
+	//std::cout << "initial MX cell numbers: " << mxQuotient << std::endl;
+}
+
 void SceNodes::addNewlyDividedCells(
 		thrust::device_vector<double> &nodeLocXNewCell,
 		thrust::device_vector<double> &nodeLocYNewCell,
@@ -459,23 +482,19 @@ void SceNodes::addNewlyDividedCells(
 	currentActiveCellCount = currentActiveCellCount + addCellCount;
 }
 
-void SceNodes::buildBuckets2D(double minX, double maxX, double minY,
-		double maxY, double bucketSize) {
+void SceNodes::buildBuckets2D() {
 	int totalActiveNodes = startPosCells
 			+ currentActiveCellCount * maxNodeOfOneCell;
 
-	// TODO: change number of total active nodes
-//std::cout << "total number of active nodes:" << totalActiveNodes
-//		<< std::endl;
 	bucketKeys.resize(totalActiveNodes);
 	bucketValues.resize(totalActiveNodes);
 	thrust::counting_iterator<uint> countingIterBegin(0);
 	thrust::counting_iterator<uint> countingIterEnd(totalActiveNodes);
 
-// takes counting iterator and coordinates
-// return tuple of keys and values
+	// takes counting iterator and coordinates
+	// return tuple of keys and values
 
-// transform the points to their bucket indices
+	// transform the points to their bucket indices
 	thrust::transform(
 			make_zip_iterator(
 					make_tuple(nodeLocX.begin(), nodeLocY.begin(),
@@ -492,7 +511,7 @@ void SceNodes::buildBuckets2D(double minX, double maxX, double minY,
 	// sort the points by their bucket index
 	thrust::sort_by_key(bucketKeys.begin(), bucketKeys.end(),
 			bucketValues.begin());
-	// for those nodes that are inactive, we key value of UINT_MAX will be returned.
+	// for those nodes that are inactive, key value of UINT_MAX will be returned.
 	// we need to removed those keys along with their values.
 	int numberOfOutOfRange = thrust::count(bucketKeys.begin(), bucketKeys.end(),
 			UINT_MAX);
@@ -513,12 +532,59 @@ __device__
 void calculateAndAddECMForce(double &xPos, double &yPos, double &zPos,
 		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
 		double &zRes) {
+
+	double linkLength = computeDist(xPos, yPos, zPos, xPos2, yPos2, zPos2);
+	double forceValue = 0;
+	if (linkLength > sceECMPara[4]) {
+		forceValue = 0;
+	} else {
+		forceValue = -sceECMPara[0] / sceECMPara[2]
+				* exp(-linkLength / sceECMPara[2])
+				+ sceECMPara[1] / sceECMPara[3]
+						* exp(-linkLength / sceECMPara[3]);
+		if (forceValue > 0) {
+			//forceValue = 0;
+			forceValue = forceValue * 0.3;
+		}
+	}
+	if (linkLength > 1.0e-12) {
+		xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
+		yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
+		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
+	}
+
 }
 
 __device__
 void calculateAndAddProfileForce(double &xPos, double &yPos, double &zPos,
 		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
 		double &zRes) {
+	double linkLength = computeDist(xPos, yPos, zPos, xPos2, yPos2, zPos2);
+	double forceValue = 0;
+	forceValue = -sceProfilePara[5] * (linkLength - sceProfilePara[6]);
+	/*
+	 if (linkLength > sceProfilePara[4]) {
+	 forceValue = 0;
+	 } else {
+	 forceValue = -sceProfilePara[0] / sceProfilePara[2]
+	 * exp(-linkLength / sceProfilePara[2])
+	 + sceProfilePara[1] / sceProfilePara[3]
+	 * exp(-linkLength / sceProfilePara[3]);
+	 // positive value means force is attraction
+	 if (linkLength > sceProfilePara[6]) {
+	 forceValue = sceProfilePara[5] * (linkLength - sceProfilePara[6]);
+	 //if (forceValue < 0) {
+	 //	forceValue = 0;
+	 //}
+	 }
+	 }
+	 */
+
+	if (linkLength > 1.0e-12) {
+		xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
+		yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
+		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
+	}
 }
 
 __device__
@@ -544,7 +610,30 @@ void calculateAndAddInterForce(double &xPos, double &yPos, double &zPos,
 		yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
 		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
 	}
-
+}
+__device__
+void calculateAndAddDiffInterCellForce(double &xPos, double &yPos, double &zPos,
+		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
+		double &zRes) {
+	double linkLength = computeDist(xPos, yPos, zPos, xPos2, yPos2, zPos2);
+	double forceValue = 0;
+	if (linkLength > sceInterDiffPara[4]) {
+		forceValue = 0;
+	} else {
+		forceValue = -sceInterDiffPara[0] / sceInterDiffPara[2]
+				* exp(-linkLength / sceInterDiffPara[2])
+				+ sceInterDiffPara[1] / sceInterDiffPara[3]
+						* exp(-linkLength / sceInterDiffPara[3]);
+		if (forceValue > 0) {
+			//forceValue = 0;
+			forceValue = forceValue * 0.3;
+		}
+	}
+	if (linkLength > 1.0e-12) {
+		xRes = xRes + forceValue * (xPos2 - xPos) / linkLength;
+		yRes = yRes + forceValue * (yPos2 - yPos) / linkLength;
+		zRes = zRes + forceValue * (zPos2 - zPos) / linkLength;
+	}
 }
 
 __device__
@@ -661,26 +750,34 @@ __device__ bool ofSameType(uint cellType1, uint cellType2) {
 	}
 }
 
+__device__ bool bothCellNodes(CellType &type1, CellType &type2) {
+	if ((type1 == MX || type1 == FNM) && (type2 == MX || type2 == FNM)) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
 __device__
 void handleForceBetweenNodes(uint &nodeRank1, CellType &type1, uint &nodeRank2,
 		CellType &type2, double &xPos, double &yPos, double &zPos,
 		double &xPos2, double &yPos2, double &zPos2, double &xRes, double &yRes,
 		double &zRes, double* _nodeLocXAddress, double* _nodeLocYAddress,
-		double* _nodeLocZAddress) {
+		double* _nodeLocZAddress, uint beginPosOfCells) {
 	// this means that both nodes come from cells
-	if ((type1 == MX || type1 == FNM) && (type2 == MX || type2 == FNM)) {
+	if (bothCellNodes(type1, type2)) {
 		// this means that nodes come from different type of cell, apply differential adhesion
 		if (type1 != type2) {
 			// TODO: apply differential adhesion here.
 			// It should be a different type of inter force.
-			calculateAndAddInterForce(xPos, yPos, zPos,
+			calculateAndAddDiffInterCellForce(xPos, yPos, zPos,
 					_nodeLocXAddress[nodeRank2], _nodeLocYAddress[nodeRank2],
 					_nodeLocZAddress[nodeRank2], xRes, yRes, zRes);
 		} else {
 			// TODO: this function needs to be modified.
 			// (1) nodeCountPerCell need to be stored in constant memory.
 			// (2) begin address of cell nodes need to be stored in constant memory.
-			if (isSameCell(nodeRank1, nodeRank2)) {
+			if (isSameCell(nodeRank1, nodeRank2, beginPosOfCells)) {
 				calculateAndAddIntraForce(xPos, yPos, zPos,
 						_nodeLocXAddress[nodeRank2],
 						_nodeLocYAddress[nodeRank2],
@@ -709,7 +806,6 @@ void handleForceBetweenNodes(uint &nodeRank1, CellType &type1, uint &nodeRank2,
 	else if (type1 == Profile && type2 == Profile) {
 		if (isNeighborProfileNodes(nodeRank1, nodeRank2)) {
 			// TODO: need a set of parameters for calculating linking force between profile nodes
-			// TODO: implement this function.
 			calculateAndAddProfileForce(xPos, yPos, zPos,
 					_nodeLocXAddress[nodeRank2], _nodeLocYAddress[nodeRank2],
 					_nodeLocZAddress[nodeRank2], xRes, yRes, zRes);
@@ -724,8 +820,7 @@ void handleForceBetweenNodes(uint &nodeRank1, CellType &type1, uint &nodeRank2,
 	}
 }
 
-void SceNodes::extendBuckets2D(uint numOfBucketsInXDim,
-		uint numOfBucketsInYDim) {
+void SceNodes::extendBuckets2D() {
 	static const uint extensionFactor2D = 9;
 	uint valuesCount = bucketValues.size();
 	bucketKeysExpanded.resize(valuesCount * extensionFactor2D);
@@ -785,24 +880,42 @@ void SceNodes::extendBuckets2D(uint numOfBucketsInXDim,
 			bucketValuesIncludingNeighbor.begin() + numberInsideRange,
 			bucketValuesIncludingNeighbor.end());
 }
-void SceNodes::applySceForces(uint numOfBucketsInXDim,
-		uint numOfBucketsInYDim) {
-	uint totalBucketCount = numOfBucketsInXDim * numOfBucketsInYDim;
-	thrust::device_vector<unsigned int> keyBegin(totalBucketCount);
-	thrust::device_vector<unsigned int> keyEnd(totalBucketCount);
+void SceNodes::applySceForces() {
+	std::cout << "begin apply sce forces" << std::endl;
+	std::cout << "size of lower = " << keyBegin.size() << std::endl;
 	thrust::counting_iterator<unsigned int> search_begin(0);
 	thrust::lower_bound(bucketKeysExpanded.begin(), bucketKeysExpanded.end(),
 			search_begin, search_begin + totalBucketCount, keyBegin.begin());
 	thrust::upper_bound(bucketKeysExpanded.begin(), bucketKeysExpanded.end(),
 			search_begin, search_begin + totalBucketCount, keyEnd.begin());
+
+	thrust::host_vector<uint> lowerCPU = keyBegin;
+
+	std::cout << "finished finding bounds" << std::endl;
+
+	int test1 = lowerCPU[0];
+	int test2 = lowerCPU[0];
+
+	std::cout << "test 1 =" << test1 << ", test 2 = " << test2 << std::endl;
+	std::cout.flush();
+
+	int test3 = keyBegin[totalBucketCount - 1];
+	int test4 = keyEnd[totalBucketCount - 1];
+
+	std::cout << "test 3 =" << test3 << ", test 4 = " << test4 << std::endl;
 	uint* valueAddress = thrust::raw_pointer_cast(
 			&bucketValuesIncludingNeighbor[0]);
+
+	std::cout << "begin pointer casting" << std::endl;
 
 	double* nodeLocXAddress = thrust::raw_pointer_cast(&nodeLocX[0]);
 	double* nodeLocYAddress = thrust::raw_pointer_cast(&nodeLocY[0]);
 	double* nodeLocZAddress = thrust::raw_pointer_cast(&nodeLocZ[0]);
 	uint* nodeRankAddress = thrust::raw_pointer_cast(&nodeCellRank[0]);
 	CellType* nodeTypeAddress = thrust::raw_pointer_cast(&nodeCellType[0]);
+
+	std::cout << "begin transformation" << std::endl;
+
 	thrust::transform(
 			make_zip_iterator(
 					make_tuple(
@@ -838,19 +951,21 @@ void SceNodes::applySceForces(uint numOfBucketsInXDim,
 									bucketValues.begin()))),
 			AddSceForce(valueAddress, nodeLocXAddress, nodeLocYAddress,
 					nodeLocZAddress, nodeRankAddress, nodeTypeAddress,
-					maxTotalCellNodeCount, maxNodeOfOneCell, maxNodePerECM));
+					maxTotalCellNodeCount, startPosCells, maxNodeOfOneCell,
+					maxNodePerECM));
+
+	std::cout << "after transformation" << std::endl;
 }
 
-void SceNodes::calculateAndApplySceForces(double minX, double maxX, double minY,
-		double maxY, double bucketSize) {
-	const int numberOfBucketsInXDim = (maxX - minX) / bucketSize + 1;
-	const int numberOfBucketsInYDim = (maxY - minY) / bucketSize + 1;
+void SceNodes::calculateAndApplySceForces() {
+	//const int numberOfBucketsInXDim = (maxX - minX) / bucketSize + 1;
+	//const int numberOfBucketsInYDim = (maxY - minY) / bucketSize + 1;
 	std::cout << "in SceNodes, before build buckets 2D:" << std::endl;
-	buildBuckets2D(minX, maxX, minY, maxY, bucketSize);
+	buildBuckets2D();
 	std::cout << "in SceNodes, before extend buckets 2D:" << std::endl;
-	extendBuckets2D(numberOfBucketsInXDim, numberOfBucketsInYDim);
+	extendBuckets2D();
 	std::cout << "in SceNodes, before apply sce forces:" << std::endl;
-	applySceForces(numberOfBucketsInXDim, numberOfBucketsInYDim);
+	applySceForces();
 	std::cout << "in SceNodes, finished apply sce forces:" << std::endl;
 }
 

@@ -35,7 +35,7 @@ class SimulationDomainGPU {
 			std::vector<double> &initMXCellNodePosY);
 public:
 	SceNodes nodes;
-	SceCells cells;
+	//SceCells cells;
 	SceCells_M cells_m;
 
 	GrowthDistriMap growthMap; // first map
@@ -100,6 +100,7 @@ public:
 	void runAllLogic(double dt);
 	void outputVtkFilesWithColor(std::string scriptNameBase, int rank);
 	void outputVtkFilesWithColor_v2(std::string scriptNameBase, int rank);
+	void outputVtkFilesWithColor_v3(std::string scriptNameBase, int rank);
 	void checkIfAllDataFieldsValid();
 };
 

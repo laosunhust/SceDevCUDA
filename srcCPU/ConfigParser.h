@@ -76,10 +76,11 @@ public:
 };
 
 class ConfigParser {
-	std::string removeLeadingAndTrailingZero(const std::string& str,
+	std::string removeLeadingAndTrailingSpace(const std::string& str,
 			const std::string& whitespace = " \t");
 	std::vector<std::string> splitLineByEqualSign(std::string &inputString,
 			const std::string& delimiters = "=");
+	std::string removeTrailingSemicolon(const std::string& str);
 public:
 	GlobalConfigVars parseConfigFile(std::string configFileName);
 };

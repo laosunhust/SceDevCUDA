@@ -843,12 +843,17 @@ RawDataInput CellInitHelper::generateRawInput(std::string meshInput) {
 		}
 	}
 
-	generateECMCenters(rawData.ECMCenters, insideCellCenters);
+	generateECMCenters(rawData.ECMCenters, insideCellCenters,
+			rawData.bdryNodes);
+	cout << "number of ECM: " << rawData.ECMCenters.size() << endl;
 
 	cout << "Number of boundary nodes: " << rawData.bdryNodes.size()
 			<< "Number of MX cells: " << rawData.MXCellCenters.size()
 			<< " and number of FNM cells:" << rawData.FNMCellCenters.size()
 			<< endl;
+
+	int jj;
+	cin >> jj;
 
 	return rawData;
 }
@@ -1026,7 +1031,7 @@ void CellInitHelper::generateECMInitNodeInfo(vector<CVector> &initECMNodePoss,
 }
 //TODO
 void CellInitHelper::generateECMCenters(vector<CVector> &ECMCenters,
-		vector<CVector> &CellCenters) {
+		vector<CVector> &CellCenters, vector<CVector> &bdryNodes) {
 	ECMCenters.clear();
 	vector<double> angles;
 	vector<CVector> vecs;
@@ -1042,6 +1047,8 @@ void CellInitHelper::generateECMCenters(vector<CVector> &ECMCenters,
 		CVector vec(sin(i * unitAngle), cos(i * unitAngle), 0);
 		vec = vec * distFromCellCenter;
 		vecs.push_back(vec);
+		//cout << "vec = (" << vec.GetX() << "," << vec.GetY() << ","
+		//		<< vec.GetZ() << ")" << endl;
 	}
 	for (int i = 0; i < CellCenters.size(); i++) {
 		for (int j = 0; j < numberOfECMAroundCellCenter; j++) {
@@ -1052,7 +1059,18 @@ void CellInitHelper::generateECMCenters(vector<CVector> &ECMCenters,
 			if (anyECMCenterTooClose(ECMCenters, pos)) {
 				continue;
 			}
+			if (anyBoundaryNodeTooClose(bdryNodes, pos)) {
+				continue;
+			}
 			ECMCenters.push_back(pos);
+			if (isnan(pos.GetX())) {
+				cout
+						<< "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+						<< endl;
+				system("pause");
+			}
+			//cout << "pos = (" << pos.GetX() << "," << pos.GetY() << ","
+			//		<< pos.GetZ() << ")" << endl;
 		}
 	}
 }
@@ -1077,6 +1095,19 @@ bool CellInitHelper::anyECMCenterTooClose(vector<CVector> &ecmCenters,
 	int size = ecmCenters.size();
 	for (int i = 0; i < size; i++) {
 		if (Modul(ecmCenters[i] - position) < MinDistToOtherECMCenters) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool CellInitHelper::anyBoundaryNodeTooClose(vector<CVector> &bdryNodes,
+		CVector position) {
+	double MinDistToOtherBdryNodes = globalConfigVars.getConfigValue(
+			"MinDistToBdryNodes").toDouble();
+	int size = bdryNodes.size();
+	for (int i = 0; i < size; i++) {
+		if (Modul(bdryNodes[i] - position) < MinDistToOtherBdryNodes) {
 			return true;
 		}
 	}

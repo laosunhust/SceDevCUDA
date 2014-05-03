@@ -3,7 +3,7 @@ set(PROJECT_NAME_STR beakDevGPU)
 project(${PROJECT_NAME_STR} C CXX)
 
 if(CMAKE_COMPILER_IS_GNUCXX)
-        add_definitions(-Wall -ansi -Wno-deprecated -pthread)
+        add_definitions(-Wall -ansi -Wno-deprecated -pthread -fpermissive)
 endif()
 
 SET(EXECUTABLE_PATH ${PROJECT_SOURCE_DIR}/bin)
